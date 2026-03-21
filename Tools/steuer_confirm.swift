@@ -241,12 +241,27 @@ struct BestaetigungView: View {
 
                         // Betrag
                         Feld(label: "Betrag (EUR)") {
-                            HStack(spacing: 8) {
-                                TextField("0.00", text: $beleg.betrag)
-                                    .textFieldStyle(.roundedBorder)
-                                    .frame(width: 120)
-                                Text("EUR")
-                                    .foregroundColor(.secondary)
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack(spacing: 8) {
+                                    TextField("0.00", text: $beleg.betrag)
+                                        .textFieldStyle(.roundedBorder)
+                                        .frame(width: 120)
+                                    Text("EUR")
+                                        .foregroundColor(.secondary)
+                                }
+                                // Warnung wenn Betrag verdächtig niedrig für Lohnsteuerbescheinigung
+                                if beleg.belegtyp == "Lohnsteuerbescheinigung",
+                                   let b = Double(beleg.betrag.replacingOccurrences(of: ",", with: ".")),
+                                   b < 1000 {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "exclamationmark.triangle.fill")
+                                            .foregroundColor(.orange)
+                                            .font(.caption)
+                                        Text("Betrag erscheint zu niedrig – bitte prüfen (Tausenderpunkt?)")
+                                            .font(.caption)
+                                            .foregroundColor(.orange)
+                                    }
+                                }
                             }
                         }
 

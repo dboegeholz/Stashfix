@@ -200,7 +200,7 @@ struct WillkommenSchritt: View {
                 .font(.largeTitle)
                 .bold()
 
-            Text("Stashfix hilft dir dabei, Dokumente zu scannen, zu sortieren und zu sortieren und an der richtigen Stelle abzulegen.\n\nAlle Daten bleiben auf deinem Mac – nichts wird in die Cloud hochgeladen.")
+            Text("Stashfix hilft dir dabei, Dokumente zu scannen, zu analysieren und an der richtigen Stelle abzulegen.\n\nAlle Daten bleiben auf deinem Mac – nichts wird in die Cloud hochgeladen.")
                 .font(.callout)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
@@ -210,7 +210,7 @@ struct WillkommenSchritt: View {
             VStack(alignment: .leading, spacing: 8) {
                 InfoZeile(icon: "doc.viewfinder",       text: "OCR-Texterkennung für gescannte Belege")
                 InfoZeile(icon: "brain",                text: "KI-Analyse via lokalem Ollama-Modell")
-                InfoZeile(icon: "folder.badge.checkmark", text: "Automatische Sortierung in Kategorien")
+                InfoZeile(icon: "folder",                text: "Automatische Sortierung in Kategorien")
                 InfoZeile(icon: "tablecells",           text: "CSV-Übersicht für den Steuerberater")
             }
             Spacer()

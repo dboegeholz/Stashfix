@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import Combine
 
 // ============================================================
 // Stashfix.swift – Menüleisten-App
@@ -125,7 +126,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem:    NSStatusItem?
     private var animTimer:     Timer?
     private var animFrame:     Int = 0
-    private var laeuftObserver: NSKeyValueObservation?
+    private var laeuftCancellable: AnyCancellable?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Dock-Darstellung aus Konfiguration laden
@@ -206,15 +207,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         dropAufFensterRegistrieren()
 
         // Animation starten/stoppen wenn laeuft sich ändert
-        laeuftObserver = appState.observe(\.laeuft, options: [.new]) { [weak self] _, change in
-            Task { @MainActor in
-                if change.newValue == true {
+        laeuftCancellable = appState.$laeuft
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] laeuft in
+                if laeuft {
                     self?.animationStarten()
                 } else {
                     self?.animationStoppen()
                 }
             }
-        }
     }
 
     private func dropAufFensterRegistrieren() {

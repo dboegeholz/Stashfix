@@ -13,6 +13,7 @@ struct EinstellungenView: View {
     @Environment(AppState.self) var appState
 
     var body: some View {
+        @Bindable var appState = appState
         TabView {
             PersonenTab()
                 .tabItem {
@@ -52,6 +53,7 @@ struct PersonenTab: View {
     @Environment(AppState.self) var appState
 
     var body: some View {
+        @Bindable var appState = appState
         Form {
             Section {
                 Picker("Steuererklärung für:", selection: $appState.konfig.modus) {
@@ -91,6 +93,7 @@ struct ArchivTab: View {
     @State private var zeigeOrdnerAuswahl = false
 
     var body: some View {
+        @Bindable var appState = appState
         Form {
             Section {
                 HStack {
@@ -160,6 +163,7 @@ struct OllamaTab: View {
     @Environment(AppState.self) var appState
 
     var body: some View {
+        @Bindable var appState = appState
         Form {
             Section {
                 TextField("URL", text: $appState.konfig.ollamaURL)
@@ -213,6 +217,7 @@ struct KategorienTab: View {
     @State private var neuerTyp:     Kategorie.TypFilter = .ausgabe
 
     var body: some View {
+        @Bindable var appState = appState
         VStack(alignment: .leading, spacing: 12) {
 
             Text("Kategorien")
@@ -321,6 +326,7 @@ struct AllgemeinTab: View {
     @State private var zeigeResetBestaetigung = false
 
     var body: some View {
+        @Bindable var appState = appState
         Form {
             Section {
                 Toggle(isOn: $appState.konfig.zeigeImDock) {

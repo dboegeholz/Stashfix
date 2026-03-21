@@ -9,6 +9,7 @@ struct ContentView: View {
     @Environment(AppState.self) var appState
 
     var body: some View {
+        @Bindable var appState = appState
         NavigationSplitView {
             InboxSidebar()
                 .environment(appState)
@@ -61,6 +62,7 @@ struct InboxSidebar: View {
     @Environment(AppState.self) var appState
 
     var body: some View {
+        @Bindable var appState = appState
         VStack(alignment: .leading, spacing: 0) {
 
             // Header
@@ -142,6 +144,7 @@ struct InboxDateiZeile: View {
     let url: URL
 
     var body: some View {
+        @Bindable var appState = appState
         HStack(spacing: 10) {
             Image(systemName: "doc.fill")
                 .foregroundColor(.accentColor)
@@ -187,6 +190,7 @@ struct StatusView: View {
     }
 
     var body: some View {
+        @Bindable var appState = appState
         VStack(spacing: 24) {
             Spacer()
 

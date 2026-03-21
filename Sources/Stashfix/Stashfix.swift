@@ -54,6 +54,7 @@ struct MenuBarInhalt: View {
     @Environment(AppState.self) var appState
 
     var body: some View {
+        @Bindable var appState = appState
         VStack(alignment: .leading, spacing: 4) {
 
             // Inbox-Status

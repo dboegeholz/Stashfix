@@ -453,6 +453,7 @@ class VerarbeitungsService {
         /no_think
         """
 
+        DevLog.shared.log("Ollama → Modell: \(konfig.ollamaModell), Prompt: \(prompt.count) Zeichen", typ: .ollama)
         guard let url = URL(string: "\(konfig.ollamaURL)/api/generate") else { return nil }
 
         struct OllamaRequest: Codable {
@@ -494,6 +495,7 @@ class VerarbeitungsService {
             return nil
         }
 
+        DevLog.shared.log("Ollama ← \(antwort.response.prefix(500))", typ: .ollama)
         return jsonZuBeleg(json: antwort.response, dateiname: dateiname)
     }
 

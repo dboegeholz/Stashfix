@@ -201,7 +201,6 @@ struct OllamaTab: View {
                     .font(.headline)
             }
 
-        }
             Section {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {

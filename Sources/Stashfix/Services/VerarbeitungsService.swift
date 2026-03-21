@@ -224,12 +224,10 @@ class VerarbeitungsService {
         let tmpURL = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent(UUID().uuidString + ".pdf")
 
-        let tesseract = toolPfad("tesseract") ?? "/opt/homebrew/bin/tesseract"
         var ocrErfolg = await prozessAusfuehren(
             pfad: ocrmypdf,
             argumente: ["-l", "deu", "--pdfa-image-compression", "jpeg",
                        "--optimize", "1", "--skip-text", "--quiet",
-                       "--tesseract-cmd", tesseract,
                        url.path, tmpURL.path]
         )
 
@@ -248,7 +246,6 @@ class VerarbeitungsService {
                 pfad: ocrmypdf,
                 argumente: ["-l", "deu", "--pdfa-image-compression", "jpeg",
                            "--optimize", "1", "--force-ocr", "--quiet",
-                           "--tesseract-cmd", tesseract,
                            url.path, tmp2URL.path]
             )
             if ocrErfolg2 && fm.fileExists(atPath: tmp2URL.path) {
@@ -347,6 +344,11 @@ class VerarbeitungsService {
             let process = Process()
             process.executableURL  = URL(fileURLWithPath: pfadZuNutzen)
             process.arguments      = argumente
+            // PATH erweitern damit ocrmypdf tesseract und andere Tools findet
+            var env = ProcessInfo.processInfo.environment
+            let extraPfade = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+            env["PATH"] = extraPfade + ":" + (env["PATH"] ?? "")
+            process.environment    = env
             process.standardOutput = Pipe()
             let errPipe = Pipe()
             process.standardError  = errPipe

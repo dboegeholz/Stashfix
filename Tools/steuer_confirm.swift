@@ -7,6 +7,18 @@ import Foundation
 // steuer_confirm.swift – mit PDF-Vorschau, Fokus, breitem Layout
 // ============================================================
 
+func datumAnzeige(_ iso: String) -> String {
+    let t = iso.split(separator: "-")
+    guard t.count == 3 else { return iso }
+    return "\(t[2]).\(t[1]).\(t[0])"
+}
+
+func datumISO(_ anzeige: String) -> String {
+    let t = anzeige.split(separator: ".")
+    guard t.count == 3 else { return anzeige }
+    return "\(t[2])-\(t[1])-\(t[0])"
+}
+
 struct Beleg: Codable {
     var datum:               String
     var steuerjahr:          String

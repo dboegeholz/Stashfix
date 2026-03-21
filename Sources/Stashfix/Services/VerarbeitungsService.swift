@@ -224,10 +224,12 @@ class VerarbeitungsService {
         let tmpURL = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent(UUID().uuidString + ".pdf")
 
+        let tesseract = toolPfad("tesseract") ?? "/opt/homebrew/bin/tesseract"
         var ocrErfolg = await prozessAusfuehren(
             pfad: ocrmypdf,
             argumente: ["-l", "deu", "--pdfa-image-compression", "jpeg",
                        "--optimize", "1", "--skip-text", "--quiet",
+                       "--tesseract-cmd", tesseract,
                        url.path, tmpURL.path]
         )
 
@@ -246,6 +248,7 @@ class VerarbeitungsService {
                 pfad: ocrmypdf,
                 argumente: ["-l", "deu", "--pdfa-image-compression", "jpeg",
                            "--optimize", "1", "--force-ocr", "--quiet",
+                           "--tesseract-cmd", tesseract,
                            url.path, tmp2URL.path]
             )
             if ocrErfolg2 && fm.fileExists(atPath: tmp2URL.path) {

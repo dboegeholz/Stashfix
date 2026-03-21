@@ -93,6 +93,8 @@ class VerarbeitungsService {
         appState.laeuft      = true
         appState.verarbeitet = 0
         onStart?()
+        DevLog.shared.aktiv = true
+        DevLog.shared.log("▶ Verarbeitung gestartet – \(appState.inboxDateien.count) Datei(en)", typ: .info)
         appState.gesamt      = appState.inboxDateien.count
 
         // Ollama starten falls nicht aktiv
@@ -128,6 +130,8 @@ class VerarbeitungsService {
         }
 
         onStop?()
+        DevLog.shared.aktiv = false
+        DevLog.shared.log("■ Verarbeitung abgeschlossen", typ: .erfolg)
         appState.laeuft = false
         appState.inboxLaden()
     }
@@ -203,6 +207,7 @@ class VerarbeitungsService {
     private func analysieren(url: URL) async -> AnalyseErgebnis? {
         let dateiname = url.lastPathComponent
         appState.statusAktualisieren(datei: dateiname, schritt: "Vorbereitung...")
+        DevLog.shared.log("── \(dateiname)", typ: .info)
 
         // 1. Dubletten-Check
         guard let hash = sha256Hash(url: url) else { return nil }
@@ -228,6 +233,7 @@ class VerarbeitungsService {
 
         // Schnellcheck: hat OCR Text produziert?
         var pdfURL = ocrErfolg && fm.fileExists(atPath: tmpURL.path) ? tmpURL : url
+        DevLog.shared.log("OCR (--skip-text): \(ocrErfolg ? "ok" : "fehlgeschlagen, nutze Original")", typ: .ocr)
         let probeText = await textExtrahieren(pdfURL: pdfURL)
 
         if probeText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -246,6 +252,9 @@ class VerarbeitungsService {
                 try? fm.removeItem(at: tmpURL)
                 pdfURL = tmp2URL
                 ocrErfolg = true
+                DevLog.shared.log("OCR --force-ocr: erfolgreich", typ: .ocr)
+            } else {
+                DevLog.shared.log("OCR --force-ocr: fehlgeschlagen", typ: .fehler)
             }
         }
 
@@ -254,6 +263,8 @@ class VerarbeitungsService {
         let text = probeText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? await textExtrahieren(pdfURL: pdfURL)
             : probeText
+        let textVorschau = String(text.prefix(800)).replacingOccurrences(of: "\n", with: " ↵ ")
+        DevLog.shared.log("Text (\(text.count) Zeichen): \(textVorschau)", typ: .text)
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             await zeigeInfo("Kein Text erkannt in:\n\(dateiname)\n\nBitte mit mind. 300 dpi scannen.")
             try? fm.removeItem(at: tmpURL)
@@ -334,13 +345,21 @@ class VerarbeitungsService {
             process.executableURL  = URL(fileURLWithPath: pfadZuNutzen)
             process.arguments      = argumente
             process.standardOutput = Pipe()
-            process.standardError  = Pipe()
+            let errPipe = Pipe()
+            process.standardError  = errPipe
             process.terminationHandler = { p in
+                let errData = errPipe.fileHandleForReading.readDataToEndOfFile()
+                if p.terminationStatus != 0, let errStr = String(data: errData, encoding: .utf8), !errStr.isEmpty {
+                    let msg = "\(URL(fileURLWithPath: pfadZuNutzen).lastPathComponent) exit(\(p.terminationStatus)): \(errStr.prefix(300))"
+                    print("⚠️ \(msg)")
+                    Task { DevLog.shared.log(msg, typ: .fehler) }
+                }
                 continuation.resume(returning: p.terminationStatus == 0)
             }
             do {
                 try process.run()
             } catch {
+                print("⚠️ Fehler beim Starten von \(pfadZuNutzen): \(error)")
                 continuation.resume(returning: false)
             }
         }
@@ -736,7 +755,7 @@ class VerarbeitungsService {
         }
         if let handle = FileHandle(forWritingAtPath: csvPfad) {
             handle.seekToEndOfFile()
-            handle.write((zeile + "\n").data(using: .utf8)!)
+            if let data = (zeile + "\n").data(using: .utf8) { handle.write(data) }
             handle.closeFile()
         } else {
             appState.fehler = "CSV konnte nicht geöffnet werden:\n\(csvPfad)"
@@ -793,7 +812,7 @@ class VerarbeitungsService {
         let eintrag = "\(hash)\t\(archivPfad)\n"  // TAB als Trenner
         if let handle = FileHandle(forWritingAtPath: pfad) {
             handle.seekToEndOfFile()
-            handle.write(eintrag.data(using: .utf8)!)
+            if let data = eintrag.data(using: .utf8) { handle.write(data) }
             handle.closeFile()
         } else {
             try? eintrag.write(toFile: pfad, atomically: true, encoding: .utf8)

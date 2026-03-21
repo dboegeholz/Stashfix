@@ -47,69 +47,6 @@ struct Stashfix: App {
 }
 
 
-// ------------------------------------------------------------
-// Menüleisten-Dropdown
-// ------------------------------------------------------------
-struct MenuBarInhalt: View {
-    @Environment(AppState.self) var appState
-
-    var body: some View {
-        @Bindable var appState = appState
-        VStack(alignment: .leading, spacing: 4) {
-
-            // Inbox-Status
-            let anzahl = appState.inboxDateien.count
-            Label(
-                anzahl == 0 ? "Inbox: leer" : "Inbox: \(anzahl) Datei(en)",
-                systemImage: anzahl == 0 ? "tray" : "tray.full"
-            )
-            .foregroundColor(anzahl == 0 ? .secondary : .primary)
-
-            Divider()
-
-            Button {
-                NotificationCenter.default.post(name: .verarbeitenStarten, object: nil)
-            } label: {
-                Label("Jetzt verarbeiten", systemImage: "play.circle")
-            }
-            .disabled(appState.inboxDateien.isEmpty || appState.laeuft)
-            .keyboardShortcut("p")
-
-            Button {
-                NSApp.activate(ignoringOtherApps: true)
-                NotificationCenter.default.post(name: .fensterOeffnen, object: nil)
-            } label: {
-                Label("Fenster öffnen", systemImage: "macwindow")
-            }
-            .keyboardShortcut("f")
-
-            Divider()
-
-            Toggle(isOn: $appState.konfig.autoModus) {
-                Label("Auto-Modus", systemImage: "bolt")
-            }
-            .onChange(of: appState.konfig.autoModus) {
-                appState.konfigurationSpeichern()
-            }
-
-            Divider()
-
-            Button {
-                NSApp.activate(ignoringOtherApps: true)
-                EinstellungenFenster.shared.oeffnen(appState: appState)
-            } label: {
-                Label("Einstellungen...", systemImage: "gear")
-            }
-            .keyboardShortcut(",")
-
-            Button("Beenden") { NSApp.terminate(nil) }
-                .keyboardShortcut("q")
-        }
-        .padding(8)
-        .frame(minWidth: 200)
-        .onAppear { appState.inboxLaden() }
-    }
-}
 
 
 // ------------------------------------------------------------
@@ -130,6 +67,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // App Nap deaktivieren – verhindert dass macOS die App drosselt
+        // wenn sie nicht im Fokus ist (wichtig für FolderWatcher + Ollama)
+        ProcessInfo.processInfo.beginActivity(
+            options: [.userInitiated, .idleSystemSleepDisabled],
+            reason: "Stashfix verarbeitet Dokumente im Hintergrund"
+        )
         // Dock-Darstellung aus Konfiguration laden
         let konfig = Konfiguration.laden()
         NSApp.setActivationPolicy(konfig.zeigeImDock ? .regular : .accessory)
@@ -159,6 +102,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(NSMenuItem.separator())
         menu.addItem(withTitle: "Einstellungen…",  action: #selector(einstellungenOeffnen), keyEquivalent: ",")
         menu.addItem(NSMenuItem.separator())
+        menu.addItem(withTitle: "Developer Log",   action: #selector(devLogOeffnen), keyEquivalent: "d")
+        menu.addItem(NSMenuItem.separator())
         menu.addItem(withTitle: "Beenden",         action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         item.menu = menu
 
@@ -179,6 +124,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if let state = appState {
             EinstellungenFenster.shared.oeffnen(appState: state)
         }
+    }
+
+    @objc private func devLogOeffnen() {
+        NSApp.activate(ignoringOtherApps: true)
+        DevLogFenster.shared.oeffnen()
     }
 
     func animationStarten() {
@@ -216,10 +166,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func dropAufFensterRegistrieren() {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(500))
             guard let window = NSApp.windows.first,
                   let appState = self.appState else { return }
-            // DropView über gesamtes ContentView legen
             let dropView = FensterDropView(appState: appState)
             dropView.frame = window.contentView?.bounds ?? .zero
             dropView.autoresizingMask = [.width, .height]
@@ -310,7 +260,7 @@ class FensterDropView: NSView {
         let nichtPdfs = urls.filter { $0.pathExtension.lowercased() != "pdf" }
 
         if pdfs.isEmpty && !nichtPdfs.isEmpty {
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 let alert             = NSAlert()
                 alert.messageText     = "Nur PDFs unterstützt"
                 alert.informativeText = "Stashfix verarbeitet ausschließlich PDF-Dateien."
@@ -334,7 +284,7 @@ class FensterDropView: NSView {
         }
 
         if kopiert {
-            DispatchQueue.main.async { self.appState.inboxLaden() }
+            Task { @MainActor in self.appState.inboxLaden() }
         }
         return true
     }

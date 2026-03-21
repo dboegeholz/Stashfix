@@ -41,7 +41,7 @@ class FolderWatcher: @unchecked Sendable {
             let alt    = self.letzteAnzahl
             self.letzteAnzahl = anzahl
             if anzahl > alt {
-                DispatchQueue.main.async { self.onChange() }
+                Task { @MainActor in self.onChange() }
             }
         }
         source?.setCancelHandler { [weak self] in

@@ -178,7 +178,10 @@ struct BestaetigungView: View {
 
                         // Datum
                         Feld(label: "Datum") {
-                            TextField("JJJJ-MM-TT", text: $beleg.datum)
+                            TextField("TT.MM.JJJJ", text: Binding(
+                                get: { datumAnzeige(beleg.datum) },
+                                set: { beleg.datum = datumISO($0) }
+                            ))
                                 .textFieldStyle(.roundedBorder)
                                 .frame(width: 160)
                         }

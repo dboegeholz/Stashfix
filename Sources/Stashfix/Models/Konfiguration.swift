@@ -56,7 +56,9 @@ struct Konfiguration: Codable {
 
     // Konfigurationsdatei in Application Support – getrennt vom Archiv
     static var speicherPfad: String {
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!.path
+        guard let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?.path else {
+            return FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".stashfix").path
+        }
         let dir = "\(appSupport)/Stashfix"
         try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
         return "\(dir)/konfiguration.json"

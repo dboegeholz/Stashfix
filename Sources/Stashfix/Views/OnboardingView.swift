@@ -44,7 +44,7 @@ class OnboardingFenster {
 // Haupt-Onboarding-View
 // ------------------------------------------------------------
 struct OnboardingView: View {
-    @ObservedObject var appState: AppState
+    var appState: AppState
     var beimAbschluss: () -> Void
     var abbrechenErlaubt: Bool = false
     var ersterStart: Bool = false
@@ -389,7 +389,7 @@ struct PfadOption: View {
 // Schritt 4: Tools
 // ------------------------------------------------------------
 struct ToolsSchritt: View {
-    @StateObject private var checker = DependencyChecker()
+    @State private var checker = DependencyChecker()
 
     var body: some View {
         VStack(spacing: 20) {

@@ -17,7 +17,7 @@ class EinstellungenFenster {
             return
         }
 
-        let view    = EinstellungenView().environmentObject(appState)
+        let view    = EinstellungenView().environment(appState)
         let hosting = NSHostingController(rootView: view)
         let window  = NSWindow(contentViewController: hosting)
         window.title          = "Einstellungen"

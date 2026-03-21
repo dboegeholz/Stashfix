@@ -1,24 +1,26 @@
 import SwiftUI
-import Combine
+import Observation
 
 // ============================================================
 // AppState.swift
+// Zentraler App-Zustand – @Observable statt ObservableObject.
+// Kein @Published mehr nötig, SwiftUI trackt Zugriffe automatisch.
 // ============================================================
 
 @MainActor
-class AppState: ObservableObject {
+@Observable
+class AppState {
 
-    @Published var konfig:            Konfiguration = Konfiguration.laden()
-    @Published var inboxDateien:      [URL]         = []
-    @Published var verarbeitet:       Int           = 0
-    @Published var gesamt:            Int           = 0
-    @Published var laeuft:            Bool          = false
-    @Published var aktuelleDatei:     String        = ""
-    @Published var aktuellerSchritt:  String        = ""
-    @Published var fehler:            String?       = nil
-    @Published var verfuegbareModelle: [String]     = []
+    var konfig:             Konfiguration = Konfiguration.laden()
+    var inboxDateien:       [URL]         = []
+    var verarbeitet:        Int           = 0
+    var gesamt:             Int           = 0
+    var laeuft:             Bool          = false
+    var aktuelleDatei:      String        = ""
+    var aktuellerSchritt:   String        = ""
+    var fehler:             String?       = nil
+    var verfuegbareModelle: [String]      = []
 
-    // Onboarding zeigen wenn noch kein Name gesetzt
     var zeigeOnboarding: Bool {
         konfig.person1.isEmpty
     }

@@ -6,15 +6,15 @@ import AppKit
 // ============================================================
 
 struct ContentView: View {
-    @EnvironmentObject var appState: AppState
+    @Environment(AppState.self) var appState
 
     var body: some View {
         NavigationSplitView {
             InboxSidebar()
-                .environmentObject(appState)
+                .environment(appState)
         } detail: {
             StatusView()
-                .environmentObject(appState)
+                .environment(appState)
         }
         .navigationTitle("Stashfix")
         .toolbar {
@@ -58,7 +58,7 @@ struct ContentView: View {
 // Sidebar: Inbox-Liste
 // ------------------------------------------------------------
 struct InboxSidebar: View {
-    @EnvironmentObject var appState: AppState
+    @Environment(AppState.self) var appState
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -103,7 +103,7 @@ struct InboxSidebar: View {
             } else {
                 List(appState.inboxDateien, id: \.self) { url in
                     InboxDateiZeile(url: url)
-                        .environmentObject(appState)
+                        .environment(appState)
                 }
                 .listStyle(.sidebar)
             }
@@ -138,7 +138,7 @@ struct InboxSidebar: View {
 // Einzelne Datei in der Inbox-Liste
 // ------------------------------------------------------------
 struct InboxDateiZeile: View {
-    @EnvironmentObject var appState: AppState
+    @Environment(AppState.self) var appState
     let url: URL
 
     var body: some View {
@@ -179,7 +179,7 @@ struct InboxDateiZeile: View {
 // Detail: Status / Fortschritt
 // ------------------------------------------------------------
 struct StatusView: View {
-    @EnvironmentObject var appState: AppState
+    @Environment(AppState.self) var appState
 
     var fortschritt: Double {
         guard appState.gesamt > 0 else { return 0 }

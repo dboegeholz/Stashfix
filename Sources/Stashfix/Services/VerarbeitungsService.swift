@@ -17,7 +17,7 @@ import CryptoKit  // SHA256
 // ============================================================
 
 @MainActor
-class VerarbeitungsService: ObservableObject {
+class VerarbeitungsService {
 
     private var appState: AppState
     private let fm = FileManager.default
@@ -27,6 +27,10 @@ class VerarbeitungsService: ObservableObject {
     init(appState: AppState) {
         self.appState = appState
     }
+
+    // Callbacks für Menüleisten-Animation
+    var onStart: (() -> Void)?
+    var onStop:  (() -> Void)?
 
 // Zwischenspeicher: analysierter Beleg vor Bestätigung
     private struct AnalyseErgebnis {
@@ -58,6 +62,7 @@ class VerarbeitungsService: ObservableObject {
         guard !appState.laeuft else { return }
         appState.laeuft      = true
         appState.verarbeitet = 0
+        onStart?()
         appState.gesamt      = appState.inboxDateien.count
 
         // Ollama starten falls nicht aktiv
@@ -67,6 +72,7 @@ class VerarbeitungsService: ObservableObject {
         // Modell-Verfügbarkeit einmalig prüfen
         guard await modellVerfuegbar() else {
             ollamaBeenden()
+            onStop?()
             appState.laeuft = false
             return
         }
@@ -91,6 +97,7 @@ class VerarbeitungsService: ObservableObject {
             appState.verarbeitet += 1
         }
 
+        onStop?()
         appState.laeuft = false
         appState.inboxLaden()
     }
@@ -287,20 +294,20 @@ class VerarbeitungsService: ObservableObject {
     // ------------------------------------------------------------
     private func textExtrahieren(pdfURL: URL) async -> String {
         let pfad = toolPfad("pdftotext") ?? "/opt/homebrew/bin/pdftotext"
-        return await withCheckedContinuation { continuation in
-            DispatchQueue.global().async {
-                let process = Process()
-                process.executableURL = URL(fileURLWithPath: pfad)
-                process.arguments     = [pdfURL.path, "-"]
-                let pipe = Pipe()
-                process.standardOutput = pipe
-                process.standardError  = Pipe()
-                try? process.run()
-                process.waitUntilExit()
+        return await withCheckedContinuation { (continuation: CheckedContinuation<String, Never>) in
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: pfad)
+            process.arguments     = [pdfURL.path, "-"]
+            let pipe = Pipe()
+            process.standardOutput = pipe
+            process.standardError  = Pipe()
+            process.terminationHandler = { _ in
                 let data     = pipe.fileHandleForReading.readDataToEndOfFile()
                 let text     = String(data: data, encoding: .utf8) ?? ""
-                let gekuerzt = String(text.prefix(3000))
-                continuation.resume(returning: gekuerzt)
+                continuation.resume(returning: String(text.prefix(3000)))
+            }
+            do { try process.run() } catch {
+                continuation.resume(returning: "")
             }
         }
     }
@@ -363,9 +370,25 @@ class VerarbeitungsService: ObservableObject {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.timeoutInterval = 300
 
-        guard let (data, _) = try? await URLSession.shared.data(for: request),
-              let antwort   = try? JSONDecoder().decode(OllamaResponse.self, from: data)
-        else { return nil }
+        let data: Data
+        do {
+            let (responseData, httpResponse) = try await URLSession.shared.data(for: request)
+            data = responseData
+            if let http = httpResponse as? HTTPURLResponse, http.statusCode != 200 {
+                let body = String(data: data, encoding: .utf8) ?? "(leer)"
+                await zeigeInfo("Ollama HTTP-Fehler \(http.statusCode):\n\(body.prefix(200))")
+                return nil
+            }
+        } catch {
+            await zeigeInfo("Ollama nicht erreichbar:\n\(error.localizedDescription)")
+            return nil
+        }
+
+        guard let antwort = try? JSONDecoder().decode(OllamaResponse.self, from: data) else {
+            let raw = String(data: data, encoding: .utf8) ?? "(leer)"
+            await zeigeInfo("Ollama Antwort konnte nicht gelesen werden:\n\(raw.prefix(300))")
+            return nil
+        }
 
         return jsonZuBeleg(json: antwort.response, dateiname: dateiname)
     }
@@ -405,8 +428,14 @@ class VerarbeitungsService: ObservableObject {
         beleg.person        = dict["person"]       as? String ?? "Gemeinsam"
         beleg.belegtyp      = dict["belegtyp"]     as? String ?? "Sonstiges"
         beleg.beschreibung  = dict["beschreibung"] as? String ?? "Unbekannt"
-        let betragStr       = dict["betrag"]       as? String ?? "0"
-        beleg.betrag        = Double(betragStr.replacingOccurrences(of: ",", with: ".")) ?? 0.0
+        // Betrag: Ollama gibt manchmal String ("9.95"), manchmal Zahl (9.95) zurück
+        if let betragStr = dict["betrag"] as? String {
+            beleg.betrag = Double(betragStr.replacingOccurrences(of: ",", with: ".")) ?? 0.0
+        } else if let betragNum = dict["betrag"] as? Double {
+            beleg.betrag = betragNum
+        } else if let betragInt = dict["betrag"] as? Int {
+            beleg.betrag = Double(betragInt)
+        }
         beleg.kategorie     = dict["kategorie"]    as? String ?? "Sonstiges"
         beleg.typ           = dict["typ"]          as? String ?? "Ausgabe"
         beleg.gemeinsam     = dict["gemeinsam"]    as? String ?? "nein"

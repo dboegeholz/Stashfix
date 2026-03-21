@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import Observation
 
 // ============================================================
 // DependencyCheck.swift
@@ -55,10 +56,11 @@ struct Dependency: Identifiable {
 // ------------------------------------------------------------
 // Check-Service
 // ------------------------------------------------------------
-class DependencyChecker: ObservableObject {
-    @Published var dependencies: [Dependency] = Dependency.alle
-    @Published var allInstalled: Bool = false
-    @Published var checked:      Bool = false
+@Observable
+class DependencyChecker {
+    var dependencies: [Dependency] = Dependency.alle
+    var allInstalled: Bool = false
+    var checked:      Bool = false
 
     func pruefen() {
         for i in dependencies.indices {
@@ -101,8 +103,8 @@ class DependencyChecker: ObservableObject {
 // Dependency-Check View
 // ------------------------------------------------------------
 struct DependencyCheckView: View {
-    @StateObject private var checker = DependencyChecker()
-    @EnvironmentObject var appState:  AppState
+    @State private var checker = DependencyChecker()
+    @Environment(AppState.self) var appState
     @State private var kopiert:       String? = nil
 
     var body: some View {
@@ -269,7 +271,7 @@ struct DependencyZeile: View {
 // Modifier: zeigt DependencyCheck beim Start
 // ------------------------------------------------------------
 struct DependencyCheckModifier: ViewModifier {
-    @StateObject private var checker = DependencyChecker()
+    @State private var checker = DependencyChecker()
     @State private var fensterOffen  = false
 
     func body(content: Content) -> some View {

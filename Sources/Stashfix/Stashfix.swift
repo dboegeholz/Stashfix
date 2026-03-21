@@ -1,6 +1,6 @@
 import SwiftUI
 import AppKit
-import Combine
+import Observation
 
 // ============================================================
 // Stashfix.swift – Menüleisten-App
@@ -9,7 +9,7 @@ import Combine
 
 @main
 struct Stashfix: App {
-    @StateObject private var appState = AppState()
+    @State private var appState = AppState()
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
     var body: some Scene {
@@ -17,7 +17,7 @@ struct Stashfix: App {
         // Hauptfenster
         WindowGroup {
             ContentView()
-                .environmentObject(appState)
+                .environment(appState)
                 .frame(minWidth: 900, minHeight: 600)
                 .onAppear {
                     appDelegate.setup(appState: appState)
@@ -51,7 +51,7 @@ struct Stashfix: App {
 // Menüleisten-Dropdown
 // ------------------------------------------------------------
 struct MenuBarInhalt: View {
-    @EnvironmentObject var appState: AppState
+    @Environment(AppState.self) var appState
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -126,7 +126,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem:    NSStatusItem?
     private var animTimer:     Timer?
     private var animFrame:     Int = 0
-    private var laeuftCancellable: AnyCancellable?
+    
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Dock-Darstellung aus Konfiguration laden
@@ -206,16 +206,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         inboxBeobachten(appState: appState)
         dropAufFensterRegistrieren()
 
-        // Animation starten/stoppen wenn laeuft sich ändert
-        laeuftCancellable = appState.$laeuft
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] laeuft in
-                if laeuft {
-                    self?.animationStarten()
-                } else {
-                    self?.animationStoppen()
-                }
-            }
+        // Animation wird via didSet in AppState.laeuft getriggert –
+        // AppDelegate beobachtet über eine einfache Polling-Methode nicht nötig,
+        // da VerarbeitungsService animationStarten/Stoppen direkt aufruft.
+        // Stattdessen: AppDelegate stellt Callbacks bereit die der Service nutzt.
+        verarbeitungsService?.onStart = { [weak self] in self?.animationStarten() }
+        verarbeitungsService?.onStop  = { [weak self] in self?.animationStoppen() }
     }
 
     private func dropAufFensterRegistrieren() {

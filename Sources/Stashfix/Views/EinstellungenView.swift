@@ -10,7 +10,7 @@ import SwiftUI
 // ============================================================
 
 struct EinstellungenView: View {
-    @EnvironmentObject var appState: AppState
+    @Environment(AppState.self) var appState
 
     var body: some View {
         TabView {
@@ -40,7 +40,7 @@ struct EinstellungenView: View {
                 }
         }
         .padding(20)
-        .environmentObject(appState)
+        .environment(appState)
     }
 }
 
@@ -49,7 +49,7 @@ struct EinstellungenView: View {
 // Tab 1: Personen
 // ------------------------------------------------------------
 struct PersonenTab: View {
-    @EnvironmentObject var appState: AppState
+    @Environment(AppState.self) var appState
 
     var body: some View {
         Form {
@@ -87,7 +87,7 @@ struct PersonenTab: View {
 // Tab 2: Archiv
 // ------------------------------------------------------------
 struct ArchivTab: View {
-    @EnvironmentObject var appState: AppState
+    @Environment(AppState.self) var appState
     @State private var zeigeOrdnerAuswahl = false
 
     var body: some View {
@@ -157,7 +157,7 @@ struct ArchivTab: View {
 // Tab 3: Ollama
 // ------------------------------------------------------------
 struct OllamaTab: View {
-    @EnvironmentObject var appState: AppState
+    @Environment(AppState.self) var appState
 
     var body: some View {
         Form {
@@ -207,7 +207,7 @@ struct OllamaTab: View {
 // Tab 4: Kategorien
 // ------------------------------------------------------------
 struct KategorienTab: View {
-    @EnvironmentObject var appState: AppState
+    @Environment(AppState.self) var appState
     @State private var neuerName:    String = ""
     @State private var neuesKuerzel: String = ""
     @State private var neuerTyp:     Kategorie.TypFilter = .ausgabe
@@ -317,7 +317,7 @@ func kategoriefarbe(_ name: String) -> Color {
 // Tab 5: Allgemein
 // ------------------------------------------------------------
 struct AllgemeinTab: View {
-    @EnvironmentObject var appState: AppState
+    @Environment(AppState.self) var appState
     @State private var zeigeResetBestaetigung = false
 
     var body: some View {

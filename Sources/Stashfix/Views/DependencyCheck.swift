@@ -228,7 +228,8 @@ struct DependencyZeile: View {
                             NSPasteboard.general.clearContents()
                             NSPasteboard.general.setString(dep.installBefehl, forType: .string)
                             kopiert = dep.id
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                            Task { @MainActor in
+                                try? await Task.sleep(for: .seconds(2))
                                 if kopiert == dep.id { kopiert = nil }
                             }
                         } label: {

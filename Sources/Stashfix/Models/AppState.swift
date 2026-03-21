@@ -55,14 +55,42 @@ class AppState {
         NSApp.dockTile.badgeLabel = anzahl > 0 ? "\(anzahl)" : nil
     }
 
+    func ollamaFuerModelllisteStarten() async {
+        // Ollama kurz starten damit der Modell-Picker befüllt werden kann.
+        // Wird nur gestartet wenn es nicht bereits läuft.
+        guard let url = URL(string: konfig.ollamaURL) else { return }
+        if (try? await URLSession.shared.data(from: url)) != nil { return }
+
+        // Pfad suchen – alle üblichen Installationsorte
+        let pfade = [
+            "/opt/homebrew/bin/ollama",
+            "/usr/local/bin/ollama",
+            "/usr/bin/ollama",
+            FileManager.default.homeDirectoryForCurrentUser.path + "/homebrew/bin/ollama",
+        ]
+        guard let pfad = pfade.first(where: { FileManager.default.fileExists(atPath: $0) }) else { return }
+
+        // Process auf Background-Thread starten um MainActor nicht zu blockieren
+        await Task.detached {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: pfad)
+            process.arguments     = ["serve"]
+            process.standardOutput = Pipe()
+            process.standardError  = Pipe()
+            try? process.run()
+        }.value
+
+        // Bis zu 5 Sekunden auf Bereitschaft warten
+        for _ in 0..<10 {
+            try? await Task.sleep(for: .milliseconds(500))
+            if (try? await URLSession.shared.data(from: url)) != nil { return }
+        }
+    }
+
     func ollamaModelleAktualisieren() async {
         guard let url = URL(string: "\(konfig.ollamaURL)/api/tags") else { return }
         guard let (data, _) = try? await URLSession.shared.data(from: url) else { return }
-        struct OllamaAntwort: Codable {
-            struct Modell: Codable { let name: String }
-            let models: [Modell]
-        }
-        guard let antwort = try? JSONDecoder().decode(OllamaAntwort.self, from: data) else { return }
+        guard let antwort = try? JSONDecoder().decode(OllamaTagsAntwort.self, from: data) else { return }
         verfuegbareModelle = antwort.models.map { $0.name }
     }
 

@@ -4,17 +4,21 @@ Eine macOS Menüleisten-App zum Scannen, Analysieren und Sortieren von Dokumente
 
 ## Features
 
-- 📄 OCR-Texterkennung für gescannte Belege (ocrmypdf)
+- 📄 OCR-Texterkennung für gescannte Belege – auch reine Bild-PDFs (ocrmypdf + tesseract)
 - 🤖 KI-Analyse via lokalem Ollama-Modell – keine Cloud, keine Datenweitergabe
 - 📁 Automatische Sortierung in Kategorien (Einnahmen/Ausgaben)
 - 🔢 Ordnungsnummern pro Kategorie und Jahr
-- 📊 CSV-Export für den Steuerberater
+- 📊 CSV-Export für den Steuerberater (Datum als TT.MM.JJJJ)
 - 🏷️ Metadaten in PDFs einbetten (Spotlight-durchsuchbar)
 - 🔍 Dubletten-Check via SHA-256 (erste 64 KB)
 - ⚡ Auto-Modus: automatische Verarbeitung bei neuen Dateien
-- 🖱️ Drag & Drop: PDFs direkt ins App-Fenster ziehen
+- 🖱️ Drag & Drop: mehrere PDFs gleichzeitig ins App-Fenster ziehen
 - 🎯 Onboarding beim ersten Start
 - 🔒 LLM-agnostisch: beliebiges Ollama-Modell konfigurierbar
+- ✏️ Analyse-Prompt direkt in den Einstellungen editierbar
+- 🐛 Developer Log: Live-Ansicht von OCR, Text und Ollama-Antworten
+- 🔔 Dock-Badge zeigt Anzahl wartender Belege
+- 🌀 Animiertes Menüleisten-Icon während der Verarbeitung
 
 ---
 
@@ -69,32 +73,36 @@ Stashfix/
 ├── Package.swift
 ├── README.md
 ├── Scripts/
-│   └── build_app.sh            ← App-Bundle bauen + signieren
+│   └── build_app.sh               ← App-Bundle bauen + signieren
+├── Resources/
+│   └── AppIcon.icns               ← App-Icon (macOS Tahoe Stil)
 ├── Sources/Stashfix/
-│   ├── Stashfix.swift          ← Einstiegspunkt, Menüleiste, AppDelegate
+│   ├── Stashfix.swift             ← Einstiegspunkt, Menüleiste, AppDelegate
+│   ├── MenuBarIcons.swift         ← Animierte Menüleisten-Icons
 │   ├── Models/
-│   │   ├── AppState.swift      ← Zentraler App-Zustand
-│   │   └── Konfiguration.swift ← Datenmodell & Einstellungen
+│   │   ├── AppState.swift         ← Zentraler App-Zustand (@Observable)
+│   │   └── Konfiguration.swift    ← Datenmodell & Einstellungen
 │   ├── Views/
 │   │   ├── ContentView.swift
 │   │   ├── EinstellungenView.swift
 │   │   ├── EinstellungenFenster.swift
 │   │   ├── OnboardingView.swift
-│   │   └── DependencyCheck.swift
+│   │   ├── DependencyCheck.swift
+│   │   └── DevLogView.swift       ← Developer Log
 │   └── Services/
 │       ├── VerarbeitungsService.swift  ← OCR, KI, Sortierung
 │       └── FolderWatcher.swift
 └── Tools/
-    └── steuer_confirm.swift    ← Bestätigungsfenster (wird automatisch gebaut)
+    └── steuer_confirm.swift       ← Bestätigungsfenster (wird automatisch gebaut)
 ```
 
 ---
 
 ## Workflow
 
-1. PDF in `_Inbox` Ordner legen oder ins Fenster ziehen
+1. PDF in `_Inbox` Ordner legen oder ins Fenster ziehen (auch mehrere gleichzeitig)
 2. App erkennt die Datei automatisch (Auto-Modus) oder auf Knopfdruck
-3. OCR + PDF/A Konvertierung
+3. OCR + PDF/A Konvertierung (automatisch mit `--force-ocr` für reine Bild-PDFs)
 4. KI analysiert Datum, Betrag, Kategorie, Person
 5. Alle Bestätigungsfenster nacheinander abarbeiten (kein Fokus-Wechsel während der Analyse)
 6. Datei wird umbenannt und sortiert
@@ -102,28 +110,57 @@ Stashfix/
 
 ---
 
+## Einstellungen
+
+### KI-Modell Tab
+- Ollama-Server URL und Modell konfigurieren
+- Analyse-Prompt direkt editieren und auf Standard zurücksetzen
+- Platzhalter: `{{personen}}`, `{{kategorien}}`, `{{jahr}}`, `{{text}}`
+
+### Allgemein Tab
+- Dock-Anzeige ein/ausschalten
+- Einrichtungsassistent erneut starten
+- Konfigurationsdatei und Dublettenprotokoll im Finder zeigen
+- Nur Dublettenprotokoll zurücksetzen (Belege bleiben erhalten)
+- Alle Einstellungen zurücksetzen (inkl. Prompt, Kategorien, Namen)
+
+### Developer Log
+Über Menüleiste → „Developer Log" erreichbar. Zeigt live:
+- OCR-Status und Fehlermeldungen
+- Extrahierten Text (erste 800 Zeichen)
+- Ollama Request (Modell, Prompt-Länge) und vollständige Antwort
+- Alle Fehlermeldungen der externen Tools
+
+---
+
 ## Technische Entscheidungen
 
 ### Dubletten-Check: SHA-256 über erste 64 KB
 
-Stashfix erkennt bereits verarbeitete Belege anhand eines Fingerabdrucks der Datei.
-
 **Warum SHA-256 statt MD5?**
-MD5 gilt als kollisionsanfällig – zwei verschiedene Dateien könnten theoretisch denselben Hash erzeugen. SHA-256 ist der aktuelle kryptographische Standard und in Apples CryptoKit bereits enthalten, ohne zusätzliche Abhängigkeiten.
+MD5 gilt als kollisionsanfällig. SHA-256 ist der aktuelle Standard und in Apples CryptoKit enthalten.
 
 **Warum nur die ersten 64 KB?**
-Ein Scan-PDF kann 20–100 MB groß sein. Den kompletten Dateiinhalt in den Speicher zu laden, nur um einen Hash zu berechnen, ist unnötig. Die ersten 64 KB enthalten Header, Metadaten und den Beginn des ersten Inhalts – das reicht aus, um eine Datei eindeutig zu identifizieren.
+Scan-PDFs können 20–100 MB groß sein. Die ersten 64 KB enthalten Header und Beginn des Inhalts – ausreichend für eindeutige Identifikation.
 
 **Dateiformat `.verarbeitete_belege`**
-Eine Textdatei im Archivordner, eine Zeile pro Beleg:
 ```
 sha256hex<TAB>/absoluter/pfad/zur/archivierten/datei
 ```
-TAB als Trenner – sicher gegen Leerzeichen und Sonderzeichen in Pfaden. Ein Beleg gilt nur dann als Dublette, wenn der Hash übereinstimmt **und** die archivierte Datei noch existiert. Gelöschte Archivdateien werden nicht als Duplikate gezählt.
+TAB als Trenner – sicher gegen Sonderzeichen in Pfaden. Dubletten zählen nur wenn die archivierte Datei noch existiert.
+
+### OCR-Strategie
+Erst `--skip-text` (schnell, schont textualisierte PDFs), dann Textprüfung. Falls leer → `--force-ocr` (erzwingt OCR auch bei Bild-PDFs wie Kassenbons). `tesseract` wird über expliziten Pfad aufgerufen um PATH-Probleme bei App-Start zu vermeiden.
 
 ### Ollama-Lifecycle
+Ollama startet automatisch bei Verarbeitungsbeginn und beendet sich nach der KI-Analyse – vor den Bestätigungsfenstern. Im Idle-Betrieb keine Ressourcennutzung. Läuft Ollama bereits, wird es nicht beendet.
 
-Ollama wird automatisch gestartet wenn eine Verarbeitung beginnt, und automatisch beendet wenn alle Belege abgearbeitet sind. Im Idle-Betrieb verbraucht die App damit keine nennenswerten Ressourcen. Ollama wird nur beendet wenn Stashfix es selbst gestartet hat – läuft Ollama bereits, wird es in Ruhe gelassen.
+### Datumsformate
+- Intern und in Dateinamen: ISO `JJJJ-MM-TT` (korrekte alphabetische Sortierung)
+- Anzeige und CSV: `TT.MM.JJJJ` (deutsches Format)
+
+### Dateinamen
+Umlaute werden nach DIN 5007 umgeschrieben: ä→ae, ö→oe, ü→ue, Ä→Ae, Ö→Oe, Ü→Ue, ß→ss.
 
 ---
 

@@ -197,6 +197,15 @@ struct Kategorie: Codable, Identifiable, Hashable {
 }
 
 // ============================================================
+// Ollama API – geteilte Response-Typen
+// ============================================================
+
+struct OllamaTagsAntwort: Codable {
+    struct Modell: Codable { let name: String }
+    let models: [Modell]
+}
+
+// ============================================================
 // Beleg
 // Ein einzelner Beleg mit allen relevanten Feldern.
 // ============================================================

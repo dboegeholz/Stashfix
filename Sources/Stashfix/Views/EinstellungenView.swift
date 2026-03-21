@@ -233,7 +233,11 @@ struct OllamaTab: View {
             }
         }
         .formStyle(.grouped)
-        .task { await appState.ollamaModelleAktualisieren() }
+        .task {
+            // Ollama kurz starten um Modelle zu laden, dann wieder beenden
+            await appState.ollamaFuerModelllisteStarten()
+            await appState.ollamaModelleAktualisieren()
+        }
         .onChange(of: appState.konfig.ollamaURL)     { appState.konfigurationSpeichern() }
         .onChange(of: appState.konfig.ollamaModell)  { appState.konfigurationSpeichern() }
         .alert("Prompt zurücksetzen?", isPresented: $zeigePromptReset) {
@@ -366,6 +370,7 @@ func kategoriefarbe(_ name: String) -> Color {
 struct AllgemeinTab: View {
     @Environment(AppState.self) var appState
     @State private var zeigeResetBestaetigung = false
+    @State private var zeigeDublettenReset = false
 
     var body: some View {
         @Bindable var appState = appState
@@ -420,6 +425,12 @@ struct AllgemeinTab: View {
             }
 
             Section {
+                Button("Nur Dublettenprotokoll zurücksetzen…") {
+                    zeigeDublettenReset = true
+                }
+                .foregroundColor(.orange)
+                .buttonStyle(.borderless)
+
                 Button("Alle Einstellungen zurücksetzen…") {
                     zeigeResetBestaetigung = true
                 }
@@ -431,10 +442,22 @@ struct AllgemeinTab: View {
             }
         }
         .formStyle(.grouped)
+        .alert("Dublettenprotokoll zurücksetzen?", isPresented: $zeigeDublettenReset) {
+            Button("Abbrechen", role: .cancel) {}
+            Button("Zurücksetzen", role: .destructive) {
+                let pfad = appState.konfig.archivPfad + "/.verarbeitete_belege"
+                // Datei existiert möglicherweise noch nicht – kein Fehler
+                if FileManager.default.fileExists(atPath: pfad) {
+                    try? FileManager.default.removeItem(atPath: pfad)
+                }
+            }
+        } message: {
+            Text("Alle gespeicherten Datei-Hashes werden gelöscht. Bereits archivierte Belege bleiben erhalten, können aber erneut verarbeitet werden.")
+        }
         .alert("Alle Einstellungen zurücksetzen?", isPresented: $zeigeResetBestaetigung) {
             Button("Abbrechen", role: .cancel) {}
             Button("Zurücksetzen", role: .destructive) {
-                // Konfigurationsdatei löschen
+                // Konfigurationsdatei löschen (inkl. Prompt, Kategorien, Namen)
                 try? FileManager.default.removeItem(atPath: Konfiguration.speicherPfad)
                 // Dublettenprotokoll löschen
                 let dublettenPfad = appState.konfig.archivPfad + "/.verarbeitete_belege"
@@ -446,7 +469,7 @@ struct AllgemeinTab: View {
                 NSApp.terminate(nil)
             }
         } message: {
-            Text("Alle Einstellungen, Personennamen, Kategorien und das Dublettenprotokoll werden gelöscht. Das Archiv selbst bleibt erhalten. Die App wird danach neu gestartet.")
+            Text("Folgendes wird gelöscht:\n• Personennamen und Modus\n• Kategorien\n• Analyse-Prompt (wird auf Standard zurückgesetzt)\n• Archivpfad\n• Ollama-Einstellungen\n• Dublettenprotokoll\n\nDas Archiv selbst bleibt erhalten. Die App wird danach neu gestartet.")
         }
     }
 }

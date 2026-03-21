@@ -19,7 +19,7 @@ import CryptoKit  // SHA256
 @MainActor
 class VerarbeitungsService {
 
-    private var appState: AppState
+    private let appState: AppState
     private let fm = FileManager.default
     private var ollamaVonUnsGestartet = false
     private var ollamaProzess: Process? = nil  // Prozess-Handle für gezieltes Beenden
@@ -62,7 +62,7 @@ class VerarbeitungsService {
     var onStart: (() -> Void)?
     var onStop:  (() -> Void)?
 
-// Zwischenspeicher: analysierter Beleg vor Bestätigung
+    // Zwischenspeicher: analysierter Beleg vor Bestätigung
     private struct AnalyseErgebnis {
         let url:      URL
         let tmpURL:   URL
@@ -185,8 +185,7 @@ class VerarbeitungsService {
         guard let tagsURL = URL(string: "\(appState.konfig.ollamaURL)/api/tags") else { return true }
         guard let (data, _) = try? await URLSession.shared.data(from: tagsURL) else { return true }
 
-        struct TagsAntwort: Codable { struct Modell: Codable { let name: String }; let models: [Modell] }
-        guard let antwort = try? JSONDecoder().decode(TagsAntwort.self, from: data) else { return true }
+        guard let antwort = try? JSONDecoder().decode(OllamaTagsAntwort.self, from: data) else { return true }
 
         let modellName = appState.konfig.ollamaModell
         let basisName  = modellName.components(separatedBy: ":").first ?? modellName
@@ -404,54 +403,12 @@ class VerarbeitungsService {
         let kategorien   = konfig.kategorien.map { $0.name }.joined(separator: " / ")
         let personen     = konfig.modus == .paar ? "\(person1), \(person2) oder Gemeinsam" : person1
 
-        let prompt = """
-        Du bist ein Assistent für deutsche Steuererklärungen.
-        Steuererklärung für: \(personen).
-
-        Analysiere den Dokumententext und antworte NUR mit einem JSON-Objekt, ohne Erklärung, ohne Backticks, ohne Markdown.
-        Achte auf korrekte deutsche Umlaute (ä, ö, ü, Ä, Ö, Ü, ß) in allen Feldern.
-
-        Format:
-        {"datum":"JJJJ-MM-TT","steuerjahr":"JJJJ","person":"...","belegtyp":"...","beschreibung":"...","betrag":"...","kategorie":"...","typ":"...","gemeinsam":"...","notiz":"..."}
-
-        Regeln:
-        - datum: Belegdatum JJJJ-MM-TT. Alle Formate umwandeln: "07.01.22"→"2022-01-07", "07.01.2022"→"2022-01-07". Fallback: \(fallbackJahr)-01-01
-        - steuerjahr: steuerlich relevantes Jahr. Bei Lohnsteuerbescheinigung/Jahresabrechnung/Kapitalertragsbescheinigung: das Abrechnungsjahr (steht meist groß auf dem Dokument). Sonst: Jahr aus datum.
-        - person: \(personen)
-        - belegtyp: Wähle den passendsten:
-            Kassenbon | Rechnung | Quittung | Lohnsteuerbescheinigung | Kapitalertragssteuerbescheinigung | Steuerbescheid | Bescheinigung | Kontoauszug | Vertrag | Sonstiges
-        - beschreibung: Name des Ausstellers, max 30 Zeichen, Umlaute korrekt schreiben. Beispiele: "Rossmann", "Ärztekammer Bayern", "Finanzamt München", "Deutsche Bank AG"
-        - betrag: NUR der finale GESAMTBETRAG als Zahl mit Punkt.
-            Kassenbon: neben "Total", "Gesamt", "SUMME" oder "EUR [Betrag]"
-            Lohnsteuerbescheinigung: Bruttolohn (Zeile 3)
-            Kapitalertragsbescheinigung: Gesamtbetrag der Erträge
-            Steuerbescheid: festgesetzte Steuer oder Erstattungsbetrag
-            Sonst: der wichtigste Betrag des Dokuments
-        - kategorie: eine von: \(kategorien)
-            Lohnsteuerbescheinigung → Arbeitslohn
-            Kapitalertragsbescheinigung → Kapitalerträge
-            Drogerie/Apotheke → Krankheitskosten oder Haushaltskosten
-            Arzt/Krankenhaus → Krankheitskosten
-            Supermarkt/Lebensmittel → Haushaltskosten
-            Handwerker/Baumarkt → Handwerkerleistungen
-            Versicherung → Vorsorgeaufwendungen
-            Spende → Spenden
-        - typ:
-            Lohnsteuerbescheinigung → Einnahme
-            Kapitalertragsbescheinigung → Einnahme
-            Steuerbescheid mit Erstattung → Einnahme
-            Alles andere → Ausgabe
-        - gemeinsam: ja oder nein
-        - notiz: Steuerlicher Hinweis, max 60 Zeichen. Beispiele:
-            "Bruttolohn lt. Lohnsteuerbescheinigung"
-            "Kapitalerträge abgeltungssteuerpflichtig"
-            "FFP2-Masken, ggf. Krankheitskosten absetzbar"
-            "leer" wenn kein Hinweis nötig
-
-        Dokumenttext:
-        \(text)
-        /no_think
-        """
+        // Prompt aus Konfiguration laden und Platzhalter ersetzen
+        let prompt = konfig.ollamaPrompt
+            .replacingOccurrences(of: "{{personen}}",   with: personen)
+            .replacingOccurrences(of: "{{kategorien}}", with: kategorien)
+            .replacingOccurrences(of: "{{jahr}}",       with: String(fallbackJahr))
+            .replacingOccurrences(of: "{{text}}",       with: text)
 
         DevLog.shared.log("Ollama → Modell: \(konfig.ollamaModell), Prompt: \(prompt.count) Zeichen", typ: .ollama)
         guard let url = URL(string: "\(konfig.ollamaURL)/api/generate") else { return nil }
@@ -617,15 +574,14 @@ class VerarbeitungsService {
         else { return nil }
 
         return await withCheckedContinuation { (continuation: CheckedContinuation<Beleg?, Never>) in
-            DispatchQueue.global().async {
-                let process = Process()
-                process.executableURL = URL(fileURLWithPath: confirmPfad)
-                process.arguments     = [jsonString]
-                let pipe = Pipe()
-                process.standardOutput = pipe
-                process.standardError  = Pipe()
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: confirmPfad)
+            process.arguments     = [jsonString]
+            let pipe = Pipe()
+            process.standardOutput = pipe
+            process.standardError  = Pipe()
 
-                process.terminationHandler = { p in
+            process.terminationHandler = { p in
                     if p.terminationStatus == 2 {
                         continuation.resume(returning: nil)
                         return
@@ -643,8 +599,7 @@ class VerarbeitungsService {
                         continuation.resume(returning: result)
                     }
                 }
-                try? process.run()
-            }
+            try? process.run()
         }
     }
 

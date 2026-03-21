@@ -212,22 +212,49 @@ class VerarbeitungsService {
         }
 
         // 2. OCR + PDF/A
+        // Strategie: erst --skip-text (schnell, schont bereits textualisierte PDFs),
+        // dann Text prüfen – falls leer, nochmal mit --force-ocr (für reine Scan-Bilder)
         appState.statusAktualisieren(datei: dateiname, schritt: "OCR + PDF/A wird erstellt...")
+        let ocrmypdf = toolPfad("ocrmypdf") ?? "/opt/homebrew/bin/ocrmypdf"
         let tmpURL = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent(UUID().uuidString + ".pdf")
 
-        let ocrErfolg = await prozessAusfuehren(
-            pfad: toolPfad("ocrmypdf") ?? "/opt/homebrew/bin/ocrmypdf",
+        var ocrErfolg = await prozessAusfuehren(
+            pfad: ocrmypdf,
             argumente: ["-l", "deu", "--pdfa-image-compression", "jpeg",
                        "--optimize", "1", "--skip-text", "--quiet",
                        url.path, tmpURL.path]
         )
-        let pdfURL = ocrErfolg && fm.fileExists(atPath: tmpURL.path) ? tmpURL : url
 
-        // 3. Text extrahieren
+        // Schnellcheck: hat OCR Text produziert?
+        var pdfURL = ocrErfolg && fm.fileExists(atPath: tmpURL.path) ? tmpURL : url
+        let probeText = await textExtrahieren(pdfURL: pdfURL)
+
+        if probeText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            // Kein Text – PDF ist reines Bild (z.B. Kassenbon-Scan)
+            // Nochmal mit --force-ocr
+            appState.statusAktualisieren(datei: dateiname, schritt: "OCR (Bild-PDF wird erkannt)...")
+            let tmp2URL = URL(fileURLWithPath: NSTemporaryDirectory())
+                .appendingPathComponent(UUID().uuidString + ".pdf")
+            let ocrErfolg2 = await prozessAusfuehren(
+                pfad: ocrmypdf,
+                argumente: ["-l", "deu", "--pdfa-image-compression", "jpeg",
+                           "--optimize", "1", "--force-ocr", "--quiet",
+                           url.path, tmp2URL.path]
+            )
+            if ocrErfolg2 && fm.fileExists(atPath: tmp2URL.path) {
+                try? fm.removeItem(at: tmpURL)
+                pdfURL = tmp2URL
+                ocrErfolg = true
+            }
+        }
+
+        // 3. Text extrahieren (ggf. bereits als probeText vorhanden)
         appState.statusAktualisieren(datei: dateiname, schritt: "Text wird extrahiert...")
-        let text = await textExtrahieren(pdfURL: pdfURL)
-        guard !text.isEmpty else {
+        let text = probeText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? await textExtrahieren(pdfURL: pdfURL)
+            : probeText
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             await zeigeInfo("Kein Text erkannt in:\n\(dateiname)\n\nBitte mit mind. 300 dpi scannen.")
             try? fm.removeItem(at: tmpURL)
             return nil

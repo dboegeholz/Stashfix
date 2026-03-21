@@ -35,6 +35,11 @@ struct EinstellungenView: View {
                     Label("Kategorien", systemImage: "tag")
                 }
 
+            PromptTab()
+                .tabItem {
+                    Label("KI-Prompt", systemImage: "text.quote")
+                }
+
             AllgemeinTab()
                 .tabItem {
                     Label("Allgemein", systemImage: "gear")
@@ -199,6 +204,34 @@ struct OllamaTab: View {
                     .font(.headline)
             }
         }
+            Section {
+                VStack(alignment: .leading, spacing: 8) {
+                    TextEditor(text: $appState.konfig.ollamaPrompt)
+                        .font(.system(.caption, design: .monospaced))
+                        .frame(minHeight: 200)
+                        .scrollContentBackground(.hidden)
+                        .background(Color(NSColor.controlBackgroundColor))
+                        .cornerRadius(6)
+                        .onChange(of: appState.konfig.ollamaPrompt) {
+                            appState.konfigurationSpeichern()
+                        }
+
+                    Text("Platzhalter: {{personen}}, {{kategorien}}, {{jahr}}, {{text}}")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+
+                    Button("Standard wiederherstellen") {
+                        appState.konfig.ollamaPrompt = Konfiguration.standardPrompt
+                        appState.konfigurationSpeichern()
+                    }
+                    .buttonStyle(.borderless)
+                    .foregroundColor(.accentColor)
+                }
+            } header: {
+                Text("Analyse-Prompt")
+                    .font(.headline)
+            }
+        }
         .formStyle(.grouped)
         .task { await appState.ollamaModelleAktualisieren() }
         .onChange(of: appState.konfig.ollamaURL)     { appState.konfigurationSpeichern() }
@@ -319,7 +352,65 @@ func kategoriefarbe(_ name: String) -> Color {
 }
 
 // ------------------------------------------------------------
-// Tab 5: Allgemein
+// Tab 5: KI-Prompt
+// ------------------------------------------------------------
+struct PromptTab: View {
+    @Environment(AppState.self) var appState
+    @State private var zeigeReset = false
+
+    var body: some View {
+        @Bindable var appState = appState
+        VStack(alignment: .leading, spacing: 12) {
+
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("KI-Prompt")
+                        .font(.headline)
+                    Text("Platzhalter: {{personen}}, {{kategorien}}, {{jahr}}, {{text}}")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                Spacer()
+                Button("Zurücksetzen") {
+                    zeigeReset = true
+                }
+                .foregroundColor(.orange)
+                .buttonStyle(.borderless)
+            }
+            .padding(.horizontal)
+            .padding(.top, 8)
+
+            TextEditor(text: $appState.konfig.ollamaPrompt)
+                .font(.system(.caption, design: .monospaced))
+                .padding(6)
+                .background(Color(NSColor.controlBackgroundColor))
+                .cornerRadius(8)
+                .padding(.horizontal)
+                .onChange(of: appState.konfig.ollamaPrompt) {
+                    appState.konfigurationSpeichern()
+                }
+
+            Text("Der Prompt wird bei jeder Verarbeitung neu geladen.")
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .padding(.horizontal)
+                .padding(.bottom, 8)
+        }
+        .alert("Prompt zurücksetzen?", isPresented: $zeigeReset) {
+            Button("Abbrechen", role: .cancel) {}
+            Button("Zurücksetzen", role: .destructive) {
+                appState.konfig.ollamaPrompt = Konfiguration.standardPrompt
+                appState.konfigurationSpeichern()
+            }
+        } message: {
+            Text("Der Prompt wird auf den Standardwert zurückgesetzt.")
+        }
+    }
+}
+
+
+// ------------------------------------------------------------
+// Tab 6: Allgemein
 // ------------------------------------------------------------
 struct AllgemeinTab: View {
     @Environment(AppState.self) var appState

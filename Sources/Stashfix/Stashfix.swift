@@ -40,11 +40,8 @@ struct Stashfix: App {
             }
         }
 
-        // Menüleisten-Icon
-        MenuBarExtra("Stashfix", systemImage: "doc.text.magnifyingglass") {
-            MenuBarInhalt()
-                .environmentObject(appState)
-        }
+        // Menüleisten-Icon wird vom AppDelegate via NSStatusItem verwaltet
+        // (ermöglicht Animation beim Verarbeiten)
     }
 }
 
@@ -124,6 +121,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var appState:             AppState?
     private var setupDone = false
 
+    // Menüleisten-Icon
+    private var statusItem:    NSStatusItem?
+    private var animTimer:     Timer?
+    private var animFrame:     Int = 0
+    private var laeuftObserver: NSKeyValueObservation?
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Dock-Darstellung aus Konfiguration laden
         let konfig = Konfiguration.laden()
@@ -135,6 +138,63 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             name:     .verarbeitenStarten,
             object:   nil
         )
+        statusItemEinrichten()
+    }
+
+    private func statusItemEinrichten() {
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        item.button?.image      = MenuBarIcons.idle
+        item.button?.imageScaling = .scaleProportionallyDown
+        item.button?.action     = #selector(statusItemGeklickt)
+        item.button?.target     = self
+
+        // Dropdown-Menü
+        let menu = NSMenu()
+        menu.addItem(withTitle: "Stashfix",        action: nil,                    keyEquivalent: "")
+        menu.addItem(NSMenuItem.separator())
+        menu.addItem(withTitle: "Fenster öffnen",  action: #selector(fensterOeffnen), keyEquivalent: "f")
+        menu.addItem(withTitle: "Verarbeiten",     action: #selector(verarbeitenStarten), keyEquivalent: "p")
+        menu.addItem(NSMenuItem.separator())
+        menu.addItem(withTitle: "Einstellungen…",  action: #selector(einstellungenOeffnen), keyEquivalent: ",")
+        menu.addItem(NSMenuItem.separator())
+        menu.addItem(withTitle: "Beenden",         action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        item.menu = menu
+
+        statusItem = item
+    }
+
+    @objc private func statusItemGeklickt() {
+        statusItem?.button?.performClick(nil)
+    }
+
+    @objc private func fensterOeffnen() {
+        NSApp.activate(ignoringOtherApps: true)
+        NotificationCenter.default.post(name: .fensterOeffnen, object: nil)
+    }
+
+    @objc private func einstellungenOeffnen() {
+        NSApp.activate(ignoringOtherApps: true)
+        if let state = appState {
+            EinstellungenFenster.shared.oeffnen(appState: state)
+        }
+    }
+
+    func animationStarten() {
+        guard animTimer == nil else { return }
+        animFrame = 0
+        animTimer = Timer.scheduledTimer(withTimeInterval: 0.12, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            Task { @MainActor in
+                self.statusItem?.button?.image = MenuBarIcons.activeFrames[self.animFrame % 8]
+                self.animFrame = (self.animFrame + 1) % 8
+            }
+        }
+    }
+
+    func animationStoppen() {
+        animTimer?.invalidate()
+        animTimer = nil
+        statusItem?.button?.image = MenuBarIcons.idle
     }
 
     func setup(appState: AppState) {
@@ -144,6 +204,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         verarbeitungsService = VerarbeitungsService(appState: appState)
         inboxBeobachten(appState: appState)
         dropAufFensterRegistrieren()
+
+        // Animation starten/stoppen wenn laeuft sich ändert
+        laeuftObserver = appState.observe(\.laeuft, options: [.new]) { [weak self] _, change in
+            Task { @MainActor in
+                if change.newValue == true {
+                    self?.animationStarten()
+                } else {
+                    self?.animationStoppen()
+                }
+            }
+        }
     }
 
     private func dropAufFensterRegistrieren() {

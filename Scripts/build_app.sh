@@ -41,6 +41,12 @@ swiftc "$CONFIRM_SRC" \
 cp "$CONFIRM_BIN" "$APP_BUNDLE/Contents/MacOS/steuer_confirm"
 echo "✅ steuer_confirm ins Bundle kopiert"
 
+# Icon ins Bundle kopieren
+if [ -f "$PROJECT_DIR/Resources/AppIcon.icns" ]; then
+    cp "$PROJECT_DIR/Resources/AppIcon.icns" "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
+    echo "✅ Icon ins Bundle kopiert"
+fi
+
 # Info.plist erstellen
 cat > "$APP_BUNDLE/Contents/Info.plist" << 'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>

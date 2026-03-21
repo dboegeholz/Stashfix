@@ -170,4 +170,75 @@ Alle Daten bleiben lokal auf dem Mac. Das KI-Modell läuft via Ollama vollständ
 
 ## Lizenz
 
-MIT
+Stashfix ist freie Software – lizenziert unter der **GNU General Public License v3.0 or later (GPL-3.0-or-later)**.
+
+Das bedeutet:
+- Du darfst die Software frei nutzen, kopieren, verändern und weitergeben
+- Weiterentwicklungen müssen ebenfalls unter der GPL veröffentlicht werden
+- Niemand darf daraus ein proprietäres/closed-source Produkt machen
+- Kommerzielle Nutzung ist erlaubt, aber der Quellcode muss offen bleiben
+
+```
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+```
+
+Den vollständigen Lizenztext findest du in der Datei [LICENSE](LICENSE) oder unter https://www.gnu.org/licenses/gpl-3.0.html
+
+### Lizenzen der verwendeten Tools
+
+| Tool | Lizenz | Kompatibilität |
+|------|--------|----------------|
+| ocrmypdf | MPL 2.0 | ✅ GPL 3.0 kompatibel |
+| tesseract | Apache 2.0 | ✅ GPL 3.0 kompatibel |
+| poppler/pdftotext | GPL 2.0 or later | ✅ GPL 3.0 kompatibel |
+| exiftool | Perl Artistic License | ✅ GPL 3.0 kompatibel |
+| ollama | MIT | ✅ GPL 3.0 kompatibel |
+
+### Lizenztext
+
+```
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+```
+
+### Spenden
+
+Stashfix ist kostenlos und bleibt es. Wenn du das Projekt unterstützen möchtest, freue ich mich über eine Spende – das motiviert zur Weiterentwicklung.
+
+---
+
+## Lizenz
+
+Copyright (C) 2026 Stashfix
+
+Dieses Programm ist freie Software: Du kannst es unter den Bedingungen der GNU General Public License, wie von der Free Software Foundation veröffentlicht, weitergeben und/oder modifizieren, entweder gemäß Version 3 der Lizenz oder (nach deiner Wahl) jeder späteren Version.
+
+Dieses Programm wird in der Hoffnung bereitgestellt, dass es nützlich ist, aber OHNE JEDE GEWÄHRLEISTUNG. Siehe die GNU General Public License für weitere Details.
+
+[GNU General Public License v3.0](https://www.gnu.org/licenses/gpl-3.0.html)
+
+---
+
+## Spenden
+
+Stashfix ist kostenlos und quelloffen. Wenn dir das Projekt gefällt, freue ich mich über eine Spende:
+
+☕ [Ko-fi](https://Ko-fi.com/dboegeholz) · 💛 [GitHub Sponsors](https://github.com/sponsors/dboegeholz)

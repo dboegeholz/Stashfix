@@ -203,7 +203,7 @@ struct OllamaTab: View {
                 Text("Modell")
                     .font(.headline)
             }
-        }
+
             Section {
                 VStack(alignment: .leading, spacing: 8) {
                     TextEditor(text: $appState.konfig.ollamaPrompt)

@@ -36,11 +36,69 @@ struct Konfiguration: Codable {
     // Auto-Modus (Folder Watcher)
     var autoModus: Bool = false
 
+    // Ollama Prompt – anpassbar, Platzhalter werden zur Laufzeit ersetzt
+    // {{personen}}   → Namen der Steuerpflichtigen
+    // {{kategorien}} → Liste aller Kategorien
+    // {{jahr}}       → Aktuelles Jahr als Fallback
+    // {{text}}       → Extrahierter PDF-Text (wird immer ans Ende gesetzt)
+    var ollamaPrompt: String = Konfiguration.standardPrompt
+
+    static let standardPrompt = """
+        Du bist ein Assistent für deutsche Steuererklärungen.
+        Steuererklärung für: {{personen}}.
+
+        Analysiere den Dokumententext und antworte NUR mit einem JSON-Objekt, ohne Erklärung, ohne Backticks, ohne Markdown.
+        Achte auf korrekte deutsche Umlaute (ä, ö, ü, Ä, Ö, Ü, ß) in allen Feldern.
+
+        Format:
+        {"datum":"JJJJ-MM-TT","steuerjahr":"JJJJ","person":"...","belegtyp":"...","beschreibung":"...","betrag":"...","kategorie":"...","typ":"...","gemeinsam":"...","notiz":"..."}
+
+        Regeln:
+        - datum: Belegdatum JJJJ-MM-TT. Alle Formate umwandeln: "07.01.22"→"2022-01-07", "07.01.2022"→"2022-01-07". Fallback: {{jahr}}-01-01
+        - steuerjahr: steuerlich relevantes Jahr. Bei Lohnsteuerbescheinigung/Jahresabrechnung/Kapitalertragsbescheinigung: das Abrechnungsjahr (steht meist groß auf dem Dokument). Sonst: Jahr aus datum.
+        - person: {{personen}}
+        - belegtyp: Wähle den passendsten:
+            Kassenbon | Rechnung | Quittung | Lohnsteuerbescheinigung | Kapitalertragssteuerbescheinigung | Steuerbescheid | Bescheinigung | Kontoauszug | Vertrag | Sonstiges
+        - beschreibung: Name des Ausstellers, max 30 Zeichen, Umlaute korrekt schreiben. Beispiele: "Rossmann", "Ärztekammer Bayern", "Finanzamt München", "Deutsche Bank AG"
+        - betrag: NUR der finale GESAMTBETRAG als Zahl mit Punkt.
+            Kassenbon: neben "Total", "Gesamt", "SUMME" oder "EUR [Betrag]"
+            Lohnsteuerbescheinigung: Bruttoarbeitslohn (Zeile 3). WICHTIG: Der Betrag steht in zwei Spalten – Euro-Betrag links (z.B. "42.350") und Cent rechts (z.B. "00"). Kombiniere beide: "42.350" + "00" = 42350.00. Der Punkt ist Tausendertrennzeichen, KEIN Dezimalzeichen. Niemals "42.350" als 42,35 interpretieren.
+            Kapitalertragsbescheinigung: Gesamtbetrag der Erträge
+            Steuerbescheid: festgesetzte Steuer oder Erstattungsbetrag
+            Sonst: der wichtigste Betrag des Dokuments
+        - kategorie: eine von: {{kategorien}}
+            Lohnsteuerbescheinigung → Arbeitslohn
+            Kapitalertragsbescheinigung → Kapitalerträge
+            Drogerie/Apotheke → Krankheitskosten oder Haushaltskosten
+            Arzt/Krankenhaus → Krankheitskosten
+            Supermarkt/Lebensmittel → Haushaltskosten
+            Handwerker/Baumarkt → Handwerkerleistungen
+            Versicherung → Vorsorgeaufwendungen
+            Spende → Spenden
+        - typ:
+            Lohnsteuerbescheinigung → Einnahme
+            Kapitalertragsbescheinigung → Einnahme
+            Steuerbescheid mit Erstattung → Einnahme
+            Alles andere → Ausgabe
+        - gemeinsam: ja oder nein
+        - notiz: Steuerlicher Hinweis, max 60 Zeichen. Beispiele:
+            "Bruttolohn lt. Lohnsteuerbescheinigung"
+            "Kapitalerträge abgeltungssteuerpflichtig"
+            "FFP2-Masken, ggf. Krankheitskosten absetzbar"
+            "leer" wenn kein Hinweis nötig
+
+        Dokumenttext:
+        {{text}}
+        /no_think
+        """
+
+
     // App-Darstellung
     var zeigeImDock: Bool = true
 
     // Kategorien (anpassbar)
     var kategorien: [Kategorie] = Kategorie.standard
+
 
     // Computed: Documents-Standardpfad
     static var documentsPfad: String {

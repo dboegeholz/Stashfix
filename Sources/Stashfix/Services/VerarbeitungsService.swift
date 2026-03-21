@@ -28,6 +28,36 @@ class VerarbeitungsService {
         self.appState = appState
     }
 
+    // ------------------------------------------------------------
+    // Datum-Formatierung
+    // Intern immer JJJJ-MM-TT (ISO), Anzeige/CSV als TT.MM.JJJJ
+    // ------------------------------------------------------------
+    private func datumAnzeige(_ iso: String) -> String {
+        // Erwartet JJJJ-MM-TT, gibt TT.MM.JJJJ zurück
+        let teile = iso.split(separator: "-")
+        guard teile.count == 3 else { return iso }
+        return "\(teile[2]).\(teile[1]).\(teile[0])"
+    }
+
+    private func beschreibungFuerDateiname(_ text: String) -> String {
+        // Umlaute nach internationaler Norm (DIN 5007)
+        let result = text
+            .replacingOccurrences(of: "ä", with: "ae")
+            .replacingOccurrences(of: "ö", with: "oe")
+            .replacingOccurrences(of: "ü", with: "ue")
+            .replacingOccurrences(of: "Ä", with: "Ae")
+            .replacingOccurrences(of: "Ö", with: "Oe")
+            .replacingOccurrences(of: "Ü", with: "Ue")
+            .replacingOccurrences(of: "ß", with: "ss")
+        // Sonderzeichen und Leerzeichen durch Unterstrich ersetzen
+        let erlaubt = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-"))
+        return result
+            .components(separatedBy: erlaubt.inverted)
+            .joined(separator: "_")
+            .replacingOccurrences(of: "__+", with: "_", options: .regularExpression)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "_"))
+    }
+
     // Callbacks für Menüleisten-Animation
     var onStart: (() -> Void)?
     var onStop:  (() -> Void)?
@@ -328,21 +358,44 @@ class VerarbeitungsService {
         Steuererklärung für: \(personen).
 
         Analysiere den Dokumententext und antworte NUR mit einem JSON-Objekt, ohne Erklärung, ohne Backticks, ohne Markdown.
+        Achte auf korrekte deutsche Umlaute (ä, ö, ü, Ä, Ö, Ü, ß) in allen Feldern.
 
         Format:
         {"datum":"JJJJ-MM-TT","steuerjahr":"JJJJ","person":"...","belegtyp":"...","beschreibung":"...","betrag":"...","kategorie":"...","typ":"...","gemeinsam":"...","notiz":"..."}
 
         Regeln:
-        - datum: Belegdatum JJJJ-MM-TT, sonst \(fallbackJahr)-01-01
-        - steuerjahr: steuerlich relevantes Jahr – bei Jahresabrechnungen/Nachzahlungen das Abrechnungsjahr, sonst Jahr aus datum
+        - datum: Belegdatum JJJJ-MM-TT. Alle Formate umwandeln: "07.01.22"→"2022-01-07", "07.01.2022"→"2022-01-07". Fallback: \(fallbackJahr)-01-01
+        - steuerjahr: steuerlich relevantes Jahr. Bei Lohnsteuerbescheinigung/Jahresabrechnung/Kapitalertragsbescheinigung: das Abrechnungsjahr (steht meist groß auf dem Dokument). Sonst: Jahr aus datum.
         - person: \(personen)
-        - belegtyp: Rechnung / Quittung / Lohnsteuerbescheinigung / Bescheinigung / Kontoauszug / Vertrag / Sonstiges
-        - beschreibung: Absender max 30 Zeichen, keine Anführungszeichen
-        - betrag: NUR Zahl mit Punkt. Beispiel: 9.95 nicht 9,95
+        - belegtyp: Wähle den passendsten:
+            Kassenbon | Rechnung | Quittung | Lohnsteuerbescheinigung | Kapitalertragssteuerbescheinigung | Steuerbescheid | Bescheinigung | Kontoauszug | Vertrag | Sonstiges
+        - beschreibung: Name des Ausstellers, max 30 Zeichen, Umlaute korrekt schreiben. Beispiele: "Rossmann", "Ärztekammer Bayern", "Finanzamt München", "Deutsche Bank AG"
+        - betrag: NUR der finale GESAMTBETRAG als Zahl mit Punkt.
+            Kassenbon: neben "Total", "Gesamt", "SUMME" oder "EUR [Betrag]"
+            Lohnsteuerbescheinigung: Bruttolohn (Zeile 3)
+            Kapitalertragsbescheinigung: Gesamtbetrag der Erträge
+            Steuerbescheid: festgesetzte Steuer oder Erstattungsbetrag
+            Sonst: der wichtigste Betrag des Dokuments
         - kategorie: eine von: \(kategorien)
-        - typ: Einnahme oder Ausgabe
+            Lohnsteuerbescheinigung → Arbeitslohn
+            Kapitalertragsbescheinigung → Kapitalerträge
+            Drogerie/Apotheke → Krankheitskosten oder Haushaltskosten
+            Arzt/Krankenhaus → Krankheitskosten
+            Supermarkt/Lebensmittel → Haushaltskosten
+            Handwerker/Baumarkt → Handwerkerleistungen
+            Versicherung → Vorsorgeaufwendungen
+            Spende → Spenden
+        - typ:
+            Lohnsteuerbescheinigung → Einnahme
+            Kapitalertragsbescheinigung → Einnahme
+            Steuerbescheid mit Erstattung → Einnahme
+            Alles andere → Ausgabe
         - gemeinsam: ja oder nein
-        - notiz: steuerlicher Hinweis max 60 Zeichen oder "leer"
+        - notiz: Steuerlicher Hinweis, max 60 Zeichen. Beispiele:
+            "Bruttolohn lt. Lohnsteuerbescheinigung"
+            "Kapitalerträge abgeltungssteuerpflichtig"
+            "FFP2-Masken, ggf. Krankheitskosten absetzbar"
+            "leer" wenn kein Hinweis nötig
 
         Dokumenttext:
         \(text)
@@ -429,8 +482,18 @@ class VerarbeitungsService {
         beleg.belegtyp      = dict["belegtyp"]     as? String ?? "Sonstiges"
         beleg.beschreibung  = dict["beschreibung"] as? String ?? "Unbekannt"
         // Betrag: Ollama gibt manchmal String ("9.95"), manchmal Zahl (9.95) zurück
+        // Betrag: Komma→Punkt, €/EUR/Leerzeichen entfernen, dann parsen
+        func parseBetrag(_ str: String) -> Double {
+            let clean = str
+                .replacingOccurrences(of: "€", with: "")
+                .replacingOccurrences(of: "EUR", with: "")
+                .replacingOccurrences(of: " ", with: "")
+                .replacingOccurrences(of: ",", with: ".")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return Double(clean) ?? 0.0
+        }
         if let betragStr = dict["betrag"] as? String {
-            beleg.betrag = Double(betragStr.replacingOccurrences(of: ",", with: ".")) ?? 0.0
+            beleg.betrag = parseBetrag(betragStr)
         } else if let betragNum = dict["betrag"] as? Double {
             beleg.betrag = betragNum
         } else if let betragInt = dict["betrag"] as? Int {
@@ -601,7 +664,7 @@ class VerarbeitungsService {
             return nil
         }
 
-        let beschreibungFuerName = beleg.beschreibung.replacingOccurrences(of: " ", with: "_")
+        let beschreibungFuerName = beschreibungFuerDateiname(beleg.beschreibung)
         let neuerName = "\(beleg.ordnungsNr)_\(beleg.datum)_\(beschreibungFuerName)_\(String(format: "%.2f", beleg.betrag))EUR.pdf"
         let zielURL   = URL(fileURLWithPath: "\(zielOrdner)/\(neuerName)")
 
@@ -629,11 +692,11 @@ class VerarbeitungsService {
         if beleg.typ == "Einnahme" {
             csvPfad = "\(basis)/\(jahr)/Einnahmen_\(jahr).csv"
             header  = "Nr;Datum;Person;Belegtyp;Beschreibung;Betrag in EUR;Kategorie;Notiz;Dateiname"
-            zeile   = "\(beleg.ordnungsNr);\(beleg.datum);\(beleg.person);\(beleg.belegtyp);\(beleg.beschreibung);\(betragFormatiert);\(beleg.kategorie);\(beleg.notiz);\(datname)"
+            zeile   = "\(beleg.ordnungsNr);\(datumAnzeige(beleg.datum));\(beleg.person);\(beleg.belegtyp);\(beleg.beschreibung);\(betragFormatiert);\(beleg.kategorie);\(beleg.notiz);\(datname)"
         } else {
             csvPfad = "\(basis)/\(jahr)/Ausgaben_\(jahr).csv"
             header  = "Nr;Datum;Person;Belegtyp;Beschreibung;Betrag in EUR;Kategorie;Gemeinsam;Notiz;Dateiname"
-            zeile   = "\(beleg.ordnungsNr);\(beleg.datum);\(beleg.person);\(beleg.belegtyp);\(beleg.beschreibung);\(betragFormatiert);\(beleg.kategorie);\(beleg.gemeinsam);\(beleg.notiz);\(datname)"
+            zeile   = "\(beleg.ordnungsNr);\(datumAnzeige(beleg.datum));\(beleg.person);\(beleg.belegtyp);\(beleg.beschreibung);\(betragFormatiert);\(beleg.kategorie);\(beleg.gemeinsam);\(beleg.notiz);\(datname)"
         }
 
         if !fm.fileExists(atPath: csvPfad) {

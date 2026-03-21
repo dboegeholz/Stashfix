@@ -352,7 +352,7 @@ class VerarbeitungsService {
                 if p.terminationStatus != 0, let errStr = String(data: errData, encoding: .utf8), !errStr.isEmpty {
                     let msg = "\(URL(fileURLWithPath: pfadZuNutzen).lastPathComponent) exit(\(p.terminationStatus)): \(errStr.prefix(300))"
                     print("⚠️ \(msg)")
-                    Task { DevLog.shared.log(msg, typ: .fehler) }
+                    Task { await DevLog.shared.log(msg, typ: .fehler) }
                 }
                 continuation.resume(returning: p.terminationStatus == 0)
             }

@@ -37,7 +37,7 @@ struct Konfiguration: Codable {
     var autoModus: Bool = false
 
     // App-Darstellung
-    var zeigeImDock: Bool = false
+    var zeigeImDock: Bool = true
 
     // Kategorien (anpassbar)
     var kategorien: [Kategorie] = Kategorie.standard

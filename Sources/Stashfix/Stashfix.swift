@@ -289,13 +289,28 @@ class FensterDropView: NSView {
     override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool { true }
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
-        guard let items = sender.draggingPasteboard.readObjects(
-            forClasses: [NSURL.self],
-            options: [.urlReadingFileURLsOnly: true]
-        ) as? [URL] else { return false }
+        // Jedes PasteboardItem einzeln auslesen – robuster bei mehreren Dateien
+        let pb = sender.draggingPasteboard
+        var urls: [URL] = []
 
-        let pdfs      = items.filter { $0.pathExtension.lowercased() == "pdf" }
-        let nichtPdfs = items.filter { $0.pathExtension.lowercased() != "pdf" }
+        if let items = pb.pasteboardItems {
+            for item in items {
+                if let str = item.string(forType: .fileURL),
+                   let url = URL(string: str) {
+                    urls.append(url)
+                }
+            }
+        }
+
+        // Fallback auf readObjects falls pasteboardItems leer
+        if urls.isEmpty,
+           let fallback = pb.readObjects(forClasses: [NSURL.self],
+               options: [.urlReadingFileURLsOnly: true]) as? [URL] {
+            urls = fallback
+        }
+
+        let pdfs      = urls.filter { $0.pathExtension.lowercased() == "pdf" }
+        let nichtPdfs = urls.filter { $0.pathExtension.lowercased() != "pdf" }
 
         if pdfs.isEmpty && !nichtPdfs.isEmpty {
             DispatchQueue.main.async {

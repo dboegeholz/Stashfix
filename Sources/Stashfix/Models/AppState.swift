@@ -40,11 +40,17 @@ class AppState: ObservableObject {
             includingPropertiesForKeys: nil
         ) else {
             inboxDateien = []
+            dockBadgeAktualisieren(anzahl: 0)
             return
         }
         inboxDateien = inhalt.filter {
             $0.pathExtension.lowercased() == "pdf"
         }.sorted { $0.lastPathComponent < $1.lastPathComponent }
+        dockBadgeAktualisieren(anzahl: inboxDateien.count)
+    }
+
+    func dockBadgeAktualisieren(anzahl: Int) {
+        NSApp.dockTile.badgeLabel = anzahl > 0 ? "\(anzahl)" : nil
     }
 
     func ollamaModelleAktualisieren() async {

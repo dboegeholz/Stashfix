@@ -2,8 +2,9 @@ import Foundation
 
 // ============================================================
 // Konfiguration.swift
-// Zentrale Einstellungen der App – werden in der iCloud
-// gespeichert und sind auf allen Macs verfügbar.
+// Zentrale Einstellungen der App.
+// Werden lokal in ~/Library/Application Support/Stashfix/ gespeichert.
+// Das Archiv kann optional in iCloud abgelegt werden (Nutzerentscheidung).
 // ============================================================
 
 struct Konfiguration: Codable {

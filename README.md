@@ -168,6 +168,10 @@ Umlaute werden nach DIN 5007 umgeschrieben: ä→ae, ö→oe, ü→ue, Ä→Ae, 
 
 Alle Daten bleiben lokal auf dem Mac. Das KI-Modell läuft via Ollama vollständig offline. Es werden keine Daten an externe Server übertragen.
 
+Die App-Konfiguration (Namen, Einstellungen) wird lokal in `~/Library/Application Support/Stashfix/` gespeichert – nicht in iCloud.
+
+**Hinweis:** Wenn du als Archivpfad einen iCloud Drive Ordner wählst, werden deine archivierten Belege über Apples iCloud synchronisiert. Das unterliegt dann Apples Datenschutzbestimmungen. Für maximalen Datenschutz empfehlen wir einen lokalen Ordner (Standard: `~/Documents/Stashfix`).
+
 ## Lizenz
 
 Stashfix ist freie Software – lizenziert unter der **GNU General Public License v3.0 or later (GPL-3.0-or-later)**.
@@ -241,4 +245,4 @@ Dieses Programm wird in der Hoffnung bereitgestellt, dass es nützlich ist, aber
 
 Stashfix ist kostenlos und quelloffen. Wenn dir das Projekt gefällt, freue ich mich über eine Spende:
 
-☕ [Ko-fi](https://Ko-fi.com/dboegeholz) · 💛 [GitHub Sponsors](https://github.com/sponsors/dboegeholz)
+☕ [Ko-fi](https://ko-fi.com/dboegeholz) · 💛 [GitHub Sponsors](https://github.com/sponsors/dboegeholz)

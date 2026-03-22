@@ -4,6 +4,8 @@ import AppKit
 // ============================================================
 // FolderWatcher.swift
 // Überwacht einen Ordner auf neue PDF-Dateien.
+// FIX Warn#3: Thread.sleep ersetzt durch asyncAfter – blockiert
+//             keinen Thread-Pool-Thread mehr.
 // ============================================================
 
 class FolderWatcher: @unchecked Sendable {
@@ -12,6 +14,9 @@ class FolderWatcher: @unchecked Sendable {
     private let pfad:         String
     private let onChange:     () -> Void
     private var letzteAnzahl: Int = 0
+
+    // Eigene Queue – isoliert vom globalen Thread-Pool
+    private let queue = DispatchQueue(label: "de.stashfix.folderwatcher", qos: .utility)
 
     init(pfad: String, onChange: @escaping () -> Void) {
         self.pfad     = pfad
@@ -30,18 +35,21 @@ class FolderWatcher: @unchecked Sendable {
         source = DispatchSource.makeFileSystemObjectSource(
             fileDescriptor: fileDesc,
             eventMask:      [.write, .rename, .attrib],
-            queue:          DispatchQueue.global()
+            queue:          queue
         )
         source?.setEventHandler { [weak self] in
             guard let self = self else { return }
-            Thread.sleep(forTimeInterval: 1.0)
-            let fm = FileManager.default
-            guard let inhalt = try? fm.contentsOfDirectory(atPath: pfadKopie) else { return }
-            let anzahl = inhalt.filter { $0.lowercased().hasSuffix(".pdf") }.count
-            let alt    = self.letzteAnzahl
-            self.letzteAnzahl = anzahl
-            if anzahl > alt {
-                Task { @MainActor in self.onChange() }
+            // FIX Warn#3: asyncAfter statt Thread.sleep – gibt Thread sofort frei
+            self.queue.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+                guard let self = self else { return }
+                let fm = FileManager.default
+                guard let inhalt = try? fm.contentsOfDirectory(atPath: pfadKopie) else { return }
+                let anzahl = inhalt.filter { $0.lowercased().hasSuffix(".pdf") }.count
+                let alt    = self.letzteAnzahl
+                self.letzteAnzahl = anzahl
+                if anzahl > alt {
+                    Task { @MainActor in self.onChange() }
+                }
             }
         }
         source?.setCancelHandler { [weak self] in

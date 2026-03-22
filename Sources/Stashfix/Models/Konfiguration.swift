@@ -46,45 +46,54 @@ struct Konfiguration: Codable {
     // {{kategorien}} → Liste aller Kategorien
     // {{jahr}}       → Aktuelles Jahr als Fallback
     // {{text}}       → Extrahierter PDF-Text (wird immer ans Ende gesetzt)
+    //
+    // Hinweis: /no_think am Promptende deaktiviert den Reasoning-Modus bei
+    // Qwen3-Modellen und halbiert die Latenz. Der VerarbeitungsService
+    // entfernt /no_think automatisch wenn ein anderes Modell konfiguriert ist.
     var ollamaPrompt: String = Konfiguration.standardPrompt
 
     static let standardPrompt = """
         Du bist ein Assistent für deutsche Steuererklärungen.
         Steuererklärung für: {{personen}}.
 
-        Analysiere den Dokumententext und antworte NUR mit einem JSON-Objekt, ohne Erklärung, ohne Backticks, ohne Markdown.
-        Achte auf korrekte deutsche Umlaute (ä, ö, ü, Ä, Ö, Ü, ß) in allen Feldern.
+        Antworte NUR mit kompaktem JSON in EINER einzigen Zeile – absolut keine Zeilenumbrüche, keine Einrückung, kein Pretty-Print. Beispiel: {"datum":"2024-01-01","steuerjahr":"2024",...}
+        Ohne Erklärung, ohne Backticks, ohne Markdown.
+        WICHTIG: Verwende EXAKT diese deutschen Feldnamen – keine englischen Übersetzungen, keine Abweichungen.
 
-        Format:
+        Format (eine Zeile, keine Umbrüche):
         {"datum":"JJJJ-MM-TT","steuerjahr":"JJJJ","person":"...","belegtyp":"...","beschreibung":"...","betrag":"...","kategorie":"...","typ":"...","gemeinsam":"...","notiz":"...","steuerrelevant":true}
 
         Regeln:
         - datum: Belegdatum JJJJ-MM-TT. Alle Formate umwandeln: "07.01.22"→"2022-01-07", "07.01.2022"→"2022-01-07". Fallback: {{jahr}}-01-01
-        - steuerjahr: steuerlich relevantes Jahr. Bei Lohnsteuerbescheinigung/Jahresabrechnung/Kapitalertragsbescheinigung: das Abrechnungsjahr (steht meist groß auf dem Dokument). Sonst: Jahr aus datum.
-        - person: {{personen}}
-        - belegtyp: Wähle den passendsten:
-            Kassenbon | Rechnung | Quittung | Lohnsteuerbescheinigung | Kapitalertragssteuerbescheinigung | Steuerbescheid | Bescheinigung | Kontoauszug | Vertrag | Sonstiges
-        - beschreibung: Name des Ausstellers, max 30 Zeichen, Umlaute korrekt schreiben. Beispiele: "Rossmann", "Ärztekammer Bayern", "Finanzamt München", "Deutsche Bank AG"
-        - betrag: NUR der finale GESAMTBETRAG als Zahl mit Punkt.
+        - steuerjahr: Das steuerlich relevante Abrechnungsjahr – NICHT das Ausstellungsdatum des Dokuments.
+            Bei Kapitalertragsbescheinigung/Jahressteuerbescheinigung: das Kalenderjahr das bescheinigt wird (steht explizit im Dokument, z.B. "für das Kalenderjahr 2024" → "2024").
+            Bei Lohnsteuerbescheinigung: das Abrechnungsjahr (steht groß auf dem Dokument).
+            Bei allen anderen: Jahr aus datum.
+            WICHTIG: Ein Dokument vom März 2025 über das Kalenderjahr 2024 hat steuerjahr "2024", nicht "2025".
+        - person: Wem gehört dieser Beleg? Nur einen der folgenden Werte verwenden: {{personen}}
+            Prüfe ob ein Name im Dokument vorkommt der zu einer der Personen passt (auch Teilübereinstimmung, z.B. zweiter Vorname). Falls eindeutig einer Person zuzuordnen: diesen Namen verwenden. Falls unklar oder beide betroffen: "Gemeinsam". Feldname ist immer "person", nicht "steuerpflichtiger" oder "empfaenger".
+        - belegtyp: Wähle den passendsten aus diesen Werten (exakt so schreiben):
+            Rechnung | Quittung | Lohnsteuerbescheinigung | Bescheinigung | Kontoauszug | Vertrag | Sonstiges
+        - beschreibung: Kurzes Schlagwort für den Dokumentinhalt, max 30 Zeichen. Beispiele: "Kapitalertragssteuerbescheinigung", "Lohnsteuerbescheinigung", "Rechnung Strom", "Arztrechnung". NICHT der Name des Ausstellers.
+        - betrag: NUR der finale GESAMTBETRAG als Zahl mit Punkt. Falls kein Betrag im Text erkennbar: 0
             Kassenbon: neben "Total", "Gesamt", "SUMME" oder "EUR [Betrag]"
             Lohnsteuerbescheinigung: Bruttoarbeitslohn (Zeile 3). WICHTIG: Der Betrag steht in zwei Spalten – Euro-Betrag links (z.B. "42.350") und Cent rechts (z.B. "00"). Kombiniere beide: "42.350" + "00" = 42350.00. Der Punkt ist Tausendertrennzeichen, KEIN Dezimalzeichen. Niemals "42.350" als 42,35 interpretieren.
-            Kapitalertragsbescheinigung: NUR der Betrag aus Zeile 7 Anlage KAP (\"Höhe der Kapitalerträge\"). Das ist der größte Betrag auf dem Dokument. NICHT Zeile 37 (Kapitalertragsteuer), NICHT Zeile 38 (Solidaritätszuschlag), NICHT addieren. Nur den einen Betrag neben \"Zeile 7\" nehmen.
+            Kapitalertragsbescheinigung: NUR der Betrag aus Zeile 7 Anlage KAP ("Höhe der Kapitalerträge"). WICHTIG: Das Layout ist mehrzeilig – "Zeile 7 Anlage KAP" steht auf einer Zeile, dann folgt "EUR" auf einer eigenen Zeile, dann der Betrag auf der nächsten Zeile (z.B. "209,11"). Suche die Zeile mit "Zeile 7" und nimm den ersten Zahlenwert der danach erscheint, auch wenn er mehrere Zeilen weiter unten steht. NICHT Zeile 37 (Kapitalertragsteuer), NICHT Zeile 38 (Solidaritätszuschlag). Komma ist Dezimaltrennzeichen: "209,11" = 209.11, NICHT 20911.
             Steuerbescheid: festgesetzte Steuer oder Erstattungsbetrag
-            Sonst: der wichtigste Betrag des Dokuments
-        - kategorie: eine von: {{kategorien}}
-            Lohnsteuerbescheinigung → Arbeitslohn
-            Kapitalertragsbescheinigung → Kapitalerträge
-            Drogerie/Apotheke → Krankheitskosten oder Haushaltskosten
-            Arzt/Krankenhaus → Krankheitskosten
-            Supermarkt/Lebensmittel → Haushaltskosten
-            Handwerker/Baumarkt → Handwerkerleistungen
-            Versicherung → Vorsorgeaufwendungen
-            Spende → Spenden
-        - typ:
-            Lohnsteuerbescheinigung → Einnahme
-            Kapitalertragsbescheinigung → Einnahme
-            Steuerbescheid mit Erstattung → Einnahme
-            Alles andere → Ausgabe
+            Sonst: der wichtigste Betrag des Dokuments. Falls kein Betrag erkennbar: 0
+        - kategorie: Wähle die am besten passende Kategorie aus dieser Liste: {{kategorien}}
+            Ordne den Dokumentinhalt inhaltlich zu – nicht nach Kategorienamen sondern nach Bedeutung.
+            Kapitalerträge, Zinsen, Dividenden, Wertpapiere → wähle die Kategorie die am ehesten "Kapitalerträge" bedeutet
+            Lohn, Gehalt, Arbeitslohn → wähle die Kategorie die am ehesten "Arbeitslohn" bedeutet
+            Arzt, Krankenhaus, Medikamente → wähle die Kategorie die am ehesten "Krankheitskosten" bedeutet
+            Handwerker, Reparatur, Baumarkt → wähle die Kategorie die am ehesten "Handwerkerleistungen" bedeutet
+            Versicherung → wähle die Kategorie die am ehesten "Vorsorgeaufwendungen" bedeutet
+            Spende → wähle die Kategorie die am ehesten "Spenden" bedeutet
+            Falls keine Kategorie passt: wähle die inhaltlich nächste aus der Liste.
+        - typ: "Einnahme" oder "Ausgabe" – leite dies aus dem Dokumentinhalt ab, NICHT aus dem Kategorienamen:
+            Einnahme: Kapitalerträge, Zinsen, Dividenden, Lohn/Gehalt, Steuererstattung, Mieteinnahmen – alles was Geldeingang bescheinigt
+            Ausgabe: Rechnungen, Kassenbons, Quittungen, gezahlte Beiträge – alles was Geldausgang belegt
+            WICHTIG: Ein Dokument über Kapitalerträge ist IMMER eine Einnahme, auch wenn darauf Steuern ausgewiesen sind.
         - gemeinsam: ja oder nein
         - steuerrelevant: true wenn steuerlich relevant (Lohnsteuerbescheinigung, Rechnung mit Steuerbezug, Krankheitskosten, Spenden etc.). false für rein private Unterlagen ohne Steuerbezug.
         - notiz: Steuerlicher Hinweis, max 60 Zeichen. Beispiele:

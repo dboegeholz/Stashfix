@@ -376,6 +376,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Punkt zu Komma für deutsche Darstellung
         beleg.betrag = beleg.betrag.replacingOccurrences(of: ".", with: ",")
 
+        // Belegtyp auf erlaubte Werte normalisieren
+        let erlaubt = ["Rechnung","Quittung","Lohnsteuerbescheinigung",
+                       "Bescheinigung","Kontoauszug","Vertrag","Sonstiges"]
+        if !erlaubt.contains(beleg.belegtyp) {
+            let b = beleg.belegtyp.lowercased()
+            if b.contains("lohnsteuer")       { beleg.belegtyp = "Lohnsteuerbescheinigung" }
+            else if b.contains("bescheinigung") { beleg.belegtyp = "Bescheinigung" }
+            else if b.contains("rechnung")    { beleg.belegtyp = "Rechnung" }
+            else if b.contains("quittung") || b.contains("kassenbon") { beleg.belegtyp = "Quittung" }
+            else if b.contains("steuer")      { beleg.belegtyp = "Bescheinigung" }
+            else if b.contains("kontoauszug") { beleg.belegtyp = "Kontoauszug" }
+            else if b.contains("vertrag")     { beleg.belegtyp = "Vertrag" }
+            else                              { beleg.belegtyp = "Sonstiges" }
+        }
+
         let view = BestaetigungView(
             beleg: beleg,
             onBestaetigen: { korrigiert in

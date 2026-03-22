@@ -68,7 +68,7 @@ struct Konfiguration: Codable {
         - betrag: NUR der finale GESAMTBETRAG als Zahl mit Punkt.
             Kassenbon: neben "Total", "Gesamt", "SUMME" oder "EUR [Betrag]"
             Lohnsteuerbescheinigung: Bruttoarbeitslohn (Zeile 3). WICHTIG: Der Betrag steht in zwei Spalten – Euro-Betrag links (z.B. "42.350") und Cent rechts (z.B. "00"). Kombiniere beide: "42.350" + "00" = 42350.00. Der Punkt ist Tausendertrennzeichen, KEIN Dezimalzeichen. Niemals "42.350" als 42,35 interpretieren.
-            Kapitalertragsbescheinigung: Gesamtbetrag der Kapitalerträge (Zeile 7 Anlage KAP, NICHT die einbehaltene Kapitalertragsteuer aus Zeile 37). Suche nach „Kapitalerträge", „Gesamtbetrag der Erträge" oder „Erträge gesamt".
+            Kapitalertragsbescheinigung: NUR der Betrag aus Zeile 7 Anlage KAP (\"Höhe der Kapitalerträge\"). Das ist der größte Betrag auf dem Dokument. NICHT Zeile 37 (Kapitalertragsteuer), NICHT Zeile 38 (Solidaritätszuschlag), NICHT addieren. Nur den einen Betrag neben \"Zeile 7\" nehmen.
             Steuerbescheid: festgesetzte Steuer oder Erstattungsbetrag
             Sonst: der wichtigste Betrag des Dokuments
         - kategorie: eine von: {{kategorien}}

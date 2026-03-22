@@ -154,12 +154,12 @@ TAB als Trenner – sicher gegen Sonderzeichen in Pfaden. Dubletten zählen nur 
 Stashfix bettet nach der Verarbeitung strukturierte Metadaten in jede PDF-Datei ein (via exiftool) und setzt gleichzeitig macOS Finder-Tags. Beide sind immer deckungsgleich.
 
 **Immer gesetzt:**
-- Kategorie (z.B. `Krankheitskosten`)
-- Belegtyp (z.B. `Kassenbon`)
+- Kategorie (z.B. `Handwerkerleistungen`)
+- Belegtyp (z.B. `Rechnung`)
 - Typ (`Einnahme` oder `Ausgabe`)
 - Ausstellungsjahr (z.B. `2025`)
-- Aussteller (z.B. `Rossmann`)
-- Empfänger/Person (z.B. `Max` oder `Gemeinsam`)
+- Aussteller (z.B. `Sanitär Meier GmbH`)
+- Empfänger/Person (z.B. `Anna Müller` oder `Gemeinsam`)
 - `Stashfix` als Marker
 
 **Nur bei steuerrelevanten Belegen zusätzlich:**
@@ -193,6 +193,26 @@ Die App-Konfiguration (Namen, Einstellungen) wird lokal in `~/Library/Applicatio
 
 **Hinweis:** Wenn du als Archivpfad einen iCloud Drive Ordner wählst, werden deine archivierten Belege über Apples iCloud synchronisiert. Das unterliegt dann Apples Datenschutzbestimmungen. Für maximalen Datenschutz empfehlen wir einen lokalen Ordner (Standard: `~/Documents/Stashfix`).
 
+## Abgrenzung zu Paperless-ngx
+
+[Paperless-ngx](https://github.com/paperless-ngx/paperless-ngx) ist ein hervorragendes, voll ausgestattetes Dokumentenmanagementsystem mit Web-Interface, automatischer Verschlagwortung, mächtiger Suchfunktion und über 37.000 GitHub-Sternen. Es ist die bessere Wahl wenn du ein vollständiges digitales Archiv für alle Dokumente aufbauen möchtest und bereit bist, einen Server oder Docker einzurichten.
+
+Stashfix verfolgt einen anderen Ansatz:
+
+| | Paperless-ngx | Stashfix |
+|---|---|---|
+| Einrichtung | Server, Docker, Datenbank | Homebrew + App starten |
+| Oberfläche | Web-Interface | Native macOS App |
+| Archiv | Datenbank (PostgreSQL) | Dateisystem / Finder |
+| Suche | Eigene Suchmaschine | Spotlight |
+| Metadaten | In Datenbank | In PDF-Datei (exiftool) + macOS Tags |
+| Zielgruppe | Alle Dokumente, ganzjährig | Deutsche Steuerbelege |
+| KI | Optional via Plugins | Lokal via Ollama, eingebaut |
+
+Stashfix ist ideal für alle die ihre Steuerbelege einmal im Jahr schnell in Ordnung bringen wollen – ohne Nachmittag Einrichtungsarbeit, ohne Server und ohne den Finder zu verlassen.
+
+---
+
 ## Lizenz
 
 Stashfix ist freie Software – lizenziert unter der **GNU General Public License v3.0 or later (GPL-3.0-or-later)**.
@@ -217,7 +237,27 @@ GNU General Public License for more details.
 
 Den vollständigen Lizenztext findest du in der Datei [LICENSE](LICENSE) oder unter https://www.gnu.org/licenses/gpl-3.0.html
 
-### Lizenzen der verwendeten Tools
+### Abgrenzung zu Paperless-ngx
+
+[Paperless-ngx](https://github.com/paperless-ngx/paperless-ngx) ist ein hervorragendes, voll ausgestattetes Dokumentenmanagementsystem mit Web-Interface, automatischer Verschlagwortung, mächtiger Suchfunktion und über 37.000 GitHub-Sternen. Es ist die bessere Wahl wenn du ein vollständiges digitales Archiv für alle Dokumente aufbauen möchtest und bereit bist, einen Server oder Docker einzurichten.
+
+Stashfix verfolgt einen anderen Ansatz:
+
+| | Paperless-ngx | Stashfix |
+|---|---|---|
+| Einrichtung | Server, Docker, Datenbank | Homebrew + App starten |
+| Oberfläche | Web-Interface | Native macOS App |
+| Archiv | Datenbank (PostgreSQL) | Dateisystem / Finder |
+| Suche | Eigene Suchmaschine | Spotlight |
+| Metadaten | In Datenbank | In PDF-Datei (exiftool) + macOS Tags |
+| Zielgruppe | Alle Dokumente, ganzjährig | Deutsche Steuerbelege |
+| KI | Optional via Plugins | Lokal via Ollama, eingebaut |
+
+Stashfix ist ideal für alle die ihre Steuerbelege einmal im Jahr schnell in Ordnung bringen wollen – ohne Nachmittag Einrichtungsarbeit, ohne Server und ohne den Finder zu verlassen.
+
+---
+
+## Lizenzen der verwendeten Tools
 
 | Tool | Lizenz | Kompatibilität |
 |------|--------|----------------|
@@ -227,7 +267,27 @@ Den vollständigen Lizenztext findest du in der Datei [LICENSE](LICENSE) oder un
 | exiftool | Perl Artistic License | ✅ GPL 3.0 kompatibel |
 | ollama | MIT | ✅ GPL 3.0 kompatibel |
 
-### Lizenztext
+### Abgrenzung zu Paperless-ngx
+
+[Paperless-ngx](https://github.com/paperless-ngx/paperless-ngx) ist ein hervorragendes, voll ausgestattetes Dokumentenmanagementsystem mit Web-Interface, automatischer Verschlagwortung, mächtiger Suchfunktion und über 37.000 GitHub-Sternen. Es ist die bessere Wahl wenn du ein vollständiges digitales Archiv für alle Dokumente aufbauen möchtest und bereit bist, einen Server oder Docker einzurichten.
+
+Stashfix verfolgt einen anderen Ansatz:
+
+| | Paperless-ngx | Stashfix |
+|---|---|---|
+| Einrichtung | Server, Docker, Datenbank | Homebrew + App starten |
+| Oberfläche | Web-Interface | Native macOS App |
+| Archiv | Datenbank (PostgreSQL) | Dateisystem / Finder |
+| Suche | Eigene Suchmaschine | Spotlight |
+| Metadaten | In Datenbank | In PDF-Datei (exiftool) + macOS Tags |
+| Zielgruppe | Alle Dokumente, ganzjährig | Deutsche Steuerbelege |
+| KI | Optional via Plugins | Lokal via Ollama, eingebaut |
+
+Stashfix ist ideal für alle die ihre Steuerbelege einmal im Jahr schnell in Ordnung bringen wollen – ohne Nachmittag Einrichtungsarbeit, ohne Server und ohne den Finder zu verlassen.
+
+---
+
+## Lizenztext
 
 ```
 This program is free software: you can redistribute it and/or modify
@@ -247,6 +307,26 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 ### Spenden
 
 Stashfix ist kostenlos und bleibt es. Wenn du das Projekt unterstützen möchtest, freue ich mich über eine Spende – das motiviert zur Weiterentwicklung.
+
+---
+
+## Abgrenzung zu Paperless-ngx
+
+[Paperless-ngx](https://github.com/paperless-ngx/paperless-ngx) ist ein hervorragendes, voll ausgestattetes Dokumentenmanagementsystem mit Web-Interface, automatischer Verschlagwortung, mächtiger Suchfunktion und über 37.000 GitHub-Sternen. Es ist die bessere Wahl wenn du ein vollständiges digitales Archiv für alle Dokumente aufbauen möchtest und bereit bist, einen Server oder Docker einzurichten.
+
+Stashfix verfolgt einen anderen Ansatz:
+
+| | Paperless-ngx | Stashfix |
+|---|---|---|
+| Einrichtung | Server, Docker, Datenbank | Homebrew + App starten |
+| Oberfläche | Web-Interface | Native macOS App |
+| Archiv | Datenbank (PostgreSQL) | Dateisystem / Finder |
+| Suche | Eigene Suchmaschine | Spotlight |
+| Metadaten | In Datenbank | In PDF-Datei (exiftool) + macOS Tags |
+| Zielgruppe | Alle Dokumente, ganzjährig | Deutsche Steuerbelege |
+| KI | Optional via Plugins | Lokal via Ollama, eingebaut |
+
+Stashfix ist ideal für alle die ihre Steuerbelege einmal im Jahr schnell in Ordnung bringen wollen – ohne Nachmittag Einrichtungsarbeit, ohne Server und ohne den Finder zu verlassen.
 
 ---
 

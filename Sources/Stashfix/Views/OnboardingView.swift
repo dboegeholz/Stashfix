@@ -477,7 +477,7 @@ struct MetadatenSchritt: View {
                     VStack(alignment: .leading, spacing: 3) {
                         Text("macOS Finder Tags setzen")
                             .fontWeight(.medium)
-                        Text("Tags erscheinen direkt im Finder und ermöglichen schnelle Filterung und Spotlight-Suche. Sie sind nicht in der Datei selbst gespeichert und gehen beim Weitergeben verloren.")
+                        Text("Tags erscheinen direkt im Finder und ermöglichen schnelle Filterung und Spotlight-Suche. Sie sind nicht in der Datei selbst gespeichert und gehen beim Weitergeben verloren (E-Mail, ZIP, Cloud, FAT32-Datenträger). Ausnahme: Kopieren auf APFS/HFS+ Laufwerke erhält die Tags.")
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }

@@ -301,10 +301,14 @@ class VerarbeitungsService {
 
         // 6. Ordnungsnummer
         appState.statusAktualisieren(datei: dateiname, schritt: "Ordnungsnummer wird vergeben...")
+        let archivJahr = bestaetigterBeleg.steuerrelevant && !bestaetigterBeleg.steuerjahr.isEmpty
+            ? bestaetigterBeleg.steuerjahr
+            : String(bestaetigterBeleg.datum.prefix(4))
         let ordnungsNr = naechsteOrdnungsnummer(
-            kategorie: bestaetigterBeleg.kategorie,
-            typ:       bestaetigterBeleg.typ,
-            jahr:      bestaetigterBeleg.steuerjahr
+            kategorie:       bestaetigterBeleg.kategorie,
+            typ:             bestaetigterBeleg.typ,
+            jahr:            archivJahr,
+            steuerrelevant:  bestaetigterBeleg.steuerrelevant
         )
         var finalerBeleg        = bestaetigterBeleg
         finalerBeleg.ordnungsNr = ordnungsNr
@@ -513,6 +517,7 @@ class VerarbeitungsService {
         beleg.typ           = dict["typ"]          as? String ?? "Ausgabe"
         beleg.gemeinsam     = dict["gemeinsam"]    as? String ?? "nein"
         beleg.notiz         = dict["notiz"]        as? String ?? "leer"
+        beleg.steuerrelevant = dict["steuerrelevant"] as? Bool ?? true
         beleg.dateiname     = dateiname
         return beleg
     }
@@ -560,6 +565,7 @@ class VerarbeitungsService {
             "gemeinsam":           beleg.gemeinsam,
             "notiz":               beleg.notiz,
             "dateiname":           dateiname,
+            "steuerrelevant":      beleg.steuerrelevant,
             "modus":               konfig.modus.rawValue,
             "person1":             konfig.person1,
             "person2":             konfig.person2,
@@ -590,11 +596,14 @@ class VerarbeitungsService {
                     let jsonStr = String(data: data, encoding: .utf8) ?? ""
                     Task { @MainActor in
                         var result = self.jsonZuBeleg(json: jsonStr, dateiname: dateiname)
-                        // steuerjahr aus JSON-Antwort direkt lesen
+                        // Felder aus steuer_confirm Antwort direkt lesen
                         if let data = jsonStr.data(using: .utf8),
-                           let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                           let sj = dict["steuerjahr"] as? String, !sj.isEmpty {
-                            result?.steuerjahr = sj
+                           let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                            if let sj = dict["steuerjahr"] as? String, !sj.isEmpty {
+                                result?.steuerjahr = sj
+                            }
+                            // steuerrelevant: Bool? in steuer_confirm, default true
+                            result?.steuerrelevant = dict["steuerrelevant"] as? Bool ?? true
                         }
                         continuation.resume(returning: result)
                     }
@@ -608,12 +617,17 @@ class VerarbeitungsService {
     // Liest die Jahres-CSV und nimmt max(vorhandene Nummern) + 1
     // Die CSV ist die einzige Wahrheit – robust gegen gelöschte Dateien
     // ------------------------------------------------------------
-    private func naechsteOrdnungsnummer(kategorie: String, typ: String, jahr: String) -> String {
+    private func naechsteOrdnungsnummer(kategorie: String, typ: String, jahr: String, steuerrelevant: Bool = true) -> String {
         let kuerzel  = kuerzelFuerKategorie(kategorie: kategorie, typ: typ)
         let basis    = appState.konfig.archivPfad
-        let csvPfad  = typ == "Einnahme"
-            ? "\(basis)/\(jahr)/Einnahmen_\(jahr).csv"
-            : "\(basis)/\(jahr)/Ausgaben_\(jahr).csv"
+        let csvPfad: String
+        if !steuerrelevant {
+            csvPfad = "\(basis)/\(jahr)/Unterlagen_\(jahr).csv"
+        } else if typ == "Einnahme" {
+            csvPfad = "\(basis)/\(jahr)/Einnahmen_\(jahr).csv"
+        } else {
+            csvPfad = "\(basis)/\(jahr)/Ausgaben_\(jahr).csv"
+        }
         let praefix  = "\(kuerzel)-"
         var maxNummer = 0
 
@@ -638,20 +652,51 @@ class VerarbeitungsService {
     }
 
     // ------------------------------------------------------------
-    // Metadaten einbetten (exiftool)
+    // Metadaten einbetten (exiftool) + macOS Tags setzen
+    // exiftool Keywords und macOS Tags werden immer synchron gehalten.
+    //
+    // Tags:
+    //   Immer:         Kategorie, Ausstellungsjahr, "Stashfix"
+    //   Steuerrelevant: "Steuer", "Steuer-JJJJ"
     // ------------------------------------------------------------
     private func metadatenEinbetten(beleg: Beleg, pdfURL: URL) async {
-        let exiftoolPfad = toolPfad("exiftool") ?? "/opt/homebrew/bin/exiftool"
+        let konfig = appState.konfig
+        let ausstellungsjahr = String(beleg.datum.prefix(4))
 
-        _ = await prozessAusfuehren(pfad: exiftoolPfad, argumente: [
-            "-Title=\(beleg.beschreibung)",
-            "-Subject=\(beleg.kategorie)",
-            "-Keywords=\(beleg.ordnungsNr), \(beleg.typ), \(String(beleg.datum.prefix(4))), \(beleg.person)",
-            "-Author=\(beleg.person)",
-            "-Comment=Nr: \(beleg.ordnungsNr) | \(String(format: "%.2f", beleg.betrag)) EUR | \(beleg.belegtyp) | \(beleg.notiz)",
-            "-overwrite_original",
-            pdfURL.path
-        ])
+        // Tags/Keywords aufbauen – immer synchron zwischen exiftool und macOS
+        var tags = [beleg.kategorie, beleg.belegtyp, beleg.typ, ausstellungsjahr, "Stashfix"]
+        if !beleg.beschreibung.isEmpty { tags.append(beleg.beschreibung) }
+        if !beleg.person.isEmpty { tags.append(beleg.person) }
+        if beleg.steuerrelevant {
+            tags += ["Steuer", "Steuerjahr-\(beleg.steuerjahr.isEmpty ? ausstellungsjahr : beleg.steuerjahr)"]
+        }
+
+        if konfig.exifMetadatenAktiv {
+            let exiftoolPfad = toolPfad("exiftool") ?? "/opt/homebrew/bin/exiftool"
+            _ = await prozessAusfuehren(pfad: exiftoolPfad, argumente: [
+                "-Title=\(beleg.beschreibung)",
+                "-Subject=\(beleg.kategorie)",
+                "-Keywords=\(tags.joined(separator: ", "))",
+                "-Author=\(beleg.person)",
+                "-Comment=Nr: \(beleg.ordnungsNr) | \(String(format: "%.2f", beleg.betrag)) EUR | \(beleg.belegtyp) | \(beleg.notiz)",
+                "-overwrite_original",
+                pdfURL.path
+            ])
+            DevLog.shared.log("exiftool Metadaten eingebettet", typ: .info)
+        }
+
+        if konfig.macOSTagsAktiv {
+            macOSTagsSetzen(url: pdfURL, tags: tags)
+        }
+    }
+
+    private func macOSTagsSetzen(url: URL, tags: [String]) {
+        do {
+            try (url as NSURL).setResourceValue(tags as NSArray, forKey: .tagNamesKey)
+            DevLog.shared.log("macOS Tags gesetzt: \(tags.joined(separator: ", "))", typ: .info)
+        } catch {
+            DevLog.shared.log("macOS Tags konnten nicht gesetzt werden: \(error.localizedDescription)", typ: .fehler)
+        }
     }
 
     // ------------------------------------------------------------
@@ -688,39 +733,57 @@ class VerarbeitungsService {
     // ------------------------------------------------------------
     // CSV aktualisieren
     // ------------------------------------------------------------
+    // Steuerrelevante Belege → Einnahmen_JJJJ.csv / Ausgaben_JJJJ.csv
+    // Nicht steuerrelevante Belege → Unterlagen_JJJJ.csv (pro Jahr)
+    // ------------------------------------------------------------
     private func csvAktualisieren(beleg: Beleg) {
-        let basis  = appState.konfig.archivPfad
-        let jahr   = beleg.steuerjahr.isEmpty ? String(beleg.datum.prefix(4)) : beleg.steuerjahr
+        let basis    = appState.konfig.archivPfad
+        let datname  = URL(fileURLWithPath: beleg.archivPfad).lastPathComponent
         let betragFormatiert = String(format: "%.2f", beleg.betrag).replacingOccurrences(of: ".", with: ",")
-        let csvPfad: String
-        let header:  String
-        let zeile:   String
-        let datname = URL(fileURLWithPath: beleg.archivPfad).lastPathComponent
 
-        if beleg.typ == "Einnahme" {
-            csvPfad = "\(basis)/\(jahr)/Einnahmen_\(jahr).csv"
-            header  = "Nr;Datum;Person;Belegtyp;Beschreibung;Betrag in EUR;Kategorie;Notiz;Dateiname"
-            zeile   = "\(beleg.ordnungsNr);\(datumAnzeige(beleg.datum));\(beleg.person);\(beleg.belegtyp);\(beleg.beschreibung);\(betragFormatiert);\(beleg.kategorie);\(beleg.notiz);\(datname)"
+        if beleg.steuerrelevant {
+            // Steuer-CSV: Jahr aus steuerjahr (kann vom Ausstellungsjahr abweichen)
+            let jahr = beleg.steuerjahr.isEmpty ? String(beleg.datum.prefix(4)) : beleg.steuerjahr
+            let csvPfad: String
+            let header:  String
+            let zeile:   String
+
+            if beleg.typ == "Einnahme" {
+                csvPfad = "\(basis)/\(jahr)/Einnahmen_\(jahr).csv"
+                header  = "Nr;Datum;Person;Belegtyp;Beschreibung;Betrag in EUR;Kategorie;Notiz;Dateiname"
+                zeile   = "\(beleg.ordnungsNr);\(datumAnzeige(beleg.datum));\(beleg.person);\(beleg.belegtyp);\(beleg.beschreibung);\(betragFormatiert);\(beleg.kategorie);\(beleg.notiz);\(datname)"
+            } else {
+                csvPfad = "\(basis)/\(jahr)/Ausgaben_\(jahr).csv"
+                header  = "Nr;Datum;Person;Belegtyp;Beschreibung;Betrag in EUR;Kategorie;Gemeinsam;Notiz;Dateiname"
+                zeile   = "\(beleg.ordnungsNr);\(datumAnzeige(beleg.datum));\(beleg.person);\(beleg.belegtyp);\(beleg.beschreibung);\(betragFormatiert);\(beleg.kategorie);\(beleg.gemeinsam);\(beleg.notiz);\(datname)"
+            }
+            csvZeileSchreiben(pfad: csvPfad, header: header, zeile: zeile)
+
         } else {
-            csvPfad = "\(basis)/\(jahr)/Ausgaben_\(jahr).csv"
-            header  = "Nr;Datum;Person;Belegtyp;Beschreibung;Betrag in EUR;Kategorie;Gemeinsam;Notiz;Dateiname"
-            zeile   = "\(beleg.ordnungsNr);\(datumAnzeige(beleg.datum));\(beleg.person);\(beleg.belegtyp);\(beleg.beschreibung);\(betragFormatiert);\(beleg.kategorie);\(beleg.gemeinsam);\(beleg.notiz);\(datname)"
+            // Unterlagen-CSV: Jahr aus Ausstellungsdatum
+            let jahr    = String(beleg.datum.prefix(4))
+            let csvPfad = "\(basis)/\(jahr)/Unterlagen_\(jahr).csv"
+            let header  = "Nr;Datum;Belegtyp;Beschreibung;Betrag in EUR;Kategorie;Notiz;Dateiname"
+            let zeile   = "\(beleg.ordnungsNr);\(datumAnzeige(beleg.datum));\(beleg.belegtyp);\(beleg.beschreibung);\(betragFormatiert);\(beleg.kategorie);\(beleg.notiz);\(datname)"
+            csvZeileSchreiben(pfad: csvPfad, header: header, zeile: zeile)
         }
+    }
 
-        if !fm.fileExists(atPath: csvPfad) {
+    private func csvZeileSchreiben(pfad: String, header: String, zeile: String) {
+        if !fm.fileExists(atPath: pfad) {
             do {
-                try (header + "\n").write(toFile: csvPfad, atomically: true, encoding: .utf8)
+                try (header + "\n").write(toFile: pfad, atomically: true, encoding: .utf8)
             } catch {
                 appState.fehler = "CSV konnte nicht erstellt werden:\n\(error.localizedDescription)"
                 return
             }
         }
-        if let handle = FileHandle(forWritingAtPath: csvPfad) {
+        if let handle = FileHandle(forWritingAtPath: pfad) {
             handle.seekToEndOfFile()
             if let data = (zeile + "\n").data(using: .utf8) { handle.write(data) }
             handle.closeFile()
         } else {
-            appState.fehler = "CSV konnte nicht geöffnet werden:\n\(csvPfad)"
+            appState.fehler = "CSV konnte nicht geöffnet werden:\n\(pfad)"
         }
     }
 

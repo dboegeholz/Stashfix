@@ -393,6 +393,31 @@ struct AllgemeinTab: View {
             }
 
             Section {
+                Toggle(isOn: $appState.konfig.exifMetadatenAktiv) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("PDF-Metadaten einbetten (exiftool)")
+                        Text("Kategorie, Aussteller und weitere Infos werden in die PDF-Datei geschrieben und sind portabel.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .onChange(of: appState.konfig.exifMetadatenAktiv) { appState.konfigurationSpeichern() }
+
+                Toggle(isOn: $appState.konfig.macOSTagsAktiv) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("macOS Finder Tags setzen")
+                        Text("Tags ermöglichen schnelle Filterung im Finder und Spotlight-Suche. Werden nicht mit der Datei übertragen.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .onChange(of: appState.konfig.macOSTagsAktiv) { appState.konfigurationSpeichern() }
+            } header: {
+                Text("Metadaten & Tags")
+                    .font(.headline)
+            }
+
+            Section {
                 Button("Einrichtungsassistent erneut starten") {
                     OnboardingFenster.shared.oeffnen(appState: appState, beimAbschluss: {}, abbrechenErlaubt: true)
                 }

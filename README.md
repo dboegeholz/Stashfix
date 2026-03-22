@@ -149,6 +149,27 @@ sha256hex<TAB>/absoluter/pfad/zur/archivierten/datei
 ```
 TAB als Trenner – sicher gegen Sonderzeichen in Pfaden. Dubletten zählen nur wenn die archivierte Datei noch existiert.
 
+### Metadaten & macOS Tags
+
+Stashfix bettet nach der Verarbeitung strukturierte Metadaten in jede PDF-Datei ein (via exiftool) und setzt gleichzeitig macOS Finder-Tags. Beide sind immer deckungsgleich.
+
+**Immer gesetzt:**
+- Kategorie (z.B. `Krankheitskosten`)
+- Belegtyp (z.B. `Kassenbon`)
+- Typ (`Einnahme` oder `Ausgabe`)
+- Ausstellungsjahr (z.B. `2025`)
+- Aussteller (z.B. `Rossmann`)
+- Empfänger/Person (z.B. `Max` oder `Gemeinsam`)
+- `Stashfix` als Marker
+
+**Nur bei steuerrelevanten Belegen zusätzlich:**
+- `Steuer`
+- `Steuerjahr-2024` (kann vom Ausstellungsjahr abweichen)
+
+Durch die macOS Finder-Tags sind alle Belege direkt im Finder filterbar und über Spotlight durchsuchbar – ohne zusätzliche App oder Datenbank.
+
+**Hinweis zur Portabilität:** exiftool-Metadaten sind in der PDF-Datei selbst gespeichert und bleiben beim Weitergeben erhalten. macOS Finder-Tags sind dagegen im Dateisystem (extended attributes) gespeichert und gehen beim Weitergeben verloren – etwa per E-Mail, ZIP, Upload zu Cloud-Diensten oder Kopieren auf FAT32/ExFAT-Datenträger. Das ist datenschutztechnisch ein Vorteil: ein Empfänger sieht keine internen Kategorisierungen. Beide Optionen lassen sich unabhängig im Onboarding und in den Einstellungen aktivieren oder deaktivieren.
+
 ### OCR-Strategie
 Erst `--skip-text` (schnell, schont textualisierte PDFs), dann Textprüfung. Falls leer → `--force-ocr` (erzwingt OCR auch bei Bild-PDFs wie Kassenbons). `tesseract` wird über expliziten Pfad aufgerufen um PATH-Probleme bei App-Start zu vermeiden.
 

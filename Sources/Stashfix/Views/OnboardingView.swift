@@ -12,7 +12,8 @@ enum OnboardingSchritt: Int, CaseIterable {
     case personen     = 1
     case speicherort  = 2
     case tools        = 3
-    case fertig       = 4
+    case metadaten    = 4
+    case fertig       = 5
 }
 
 @MainActor
@@ -56,6 +57,8 @@ struct OnboardingView: View {
     @State private var pfadWahl: PfadWahl
     @State private var eigenerPfad: String = ""
     @State private var zeigePfadAuswahl = false
+    @State private var exifAktiv: Bool = true
+    @State private var macOSTagsAktiv: Bool = true
 
     init(appState: AppState, beimAbschluss: @escaping () -> Void, abbrechenErlaubt: Bool = false, ersterStart: Bool = false) {
         self.appState        = appState
@@ -102,6 +105,7 @@ struct OnboardingView: View {
                 case .personen:    PersonenSchritt(modus: $modus, person1: $person1, person2: $person2)
                 case .speicherort: SpeicherortSchritt(pfadWahl: $pfadWahl, eigenerPfad: $eigenerPfad, zeigePfadAuswahl: $zeigePfadAuswahl)
                 case .tools:       ToolsSchritt()
+                case .metadaten:   MetadatenSchritt(exifAktiv: $exifAktiv, macOSTagsAktiv: $macOSTagsAktiv)
                 case .fertig:      FertigSchritt(pfad: ausgewaehlterPfad, person: person1)
                 }
             }
@@ -164,10 +168,12 @@ struct OnboardingView: View {
 
     private func abschliessen() {
         // Konfiguration speichern
-        appState.konfig.modus      = modus
-        appState.konfig.person1    = person1
-        appState.konfig.person2    = modus == .paar ? person2 : ""
-        appState.konfig.archivPfad = ausgewaehlterPfad
+        appState.konfig.modus              = modus
+        appState.konfig.person1            = person1
+        appState.konfig.person2            = modus == .paar ? person2 : ""
+        appState.konfig.archivPfad         = ausgewaehlterPfad
+        appState.konfig.exifMetadatenAktiv = exifAktiv
+        appState.konfig.macOSTagsAktiv     = macOSTagsAktiv
 
         // Jetzt erst _Inbox anlegen – Jahresordner werden automatisch
         // beim ersten verarbeiteten Beleg angelegt
@@ -430,7 +436,66 @@ struct ToolsSchritt: View {
 
 
 // ------------------------------------------------------------
-// Schritt 5: Fertig
+// Schritt 5: Metadaten & Tags
+// ------------------------------------------------------------
+struct MetadatenSchritt: View {
+    @Binding var exifAktiv:      Bool
+    @Binding var macOSTagsAktiv: Bool
+
+    var body: some View {
+        VStack(spacing: 24) {
+            Image(systemName: "tag.circle.fill")
+                .font(.system(size: 60))
+                .foregroundColor(.accentColor)
+
+            Text("Metadaten & Tags")
+                .font(.title).bold()
+
+            Text("Stashfix kann strukturierte Informationen in deine Belege einbetten. Du kannst das jederzeit in den Einstellungen ändern.")
+                .multilineTextAlignment(.center)
+                .foregroundColor(.secondary)
+                .frame(maxWidth: 460)
+
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(alignment: .top, spacing: 12) {
+                    Toggle("", isOn: $exifAktiv)
+                        .toggleStyle(.switch)
+                        .labelsHidden()
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("PDF-Metadaten einbetten")
+                            .fontWeight(.medium)
+                        Text("Kategorie, Aussteller und weitere Infos werden direkt in die PDF-Datei geschrieben. Die Metadaten bleiben erhalten wenn du die Datei weitergibst.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+
+                HStack(alignment: .top, spacing: 12) {
+                    Toggle("", isOn: $macOSTagsAktiv)
+                        .toggleStyle(.switch)
+                        .labelsHidden()
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("macOS Finder Tags setzen")
+                            .fontWeight(.medium)
+                        Text("Tags erscheinen direkt im Finder und ermöglichen schnelle Filterung und Spotlight-Suche. Sie sind nicht in der Datei selbst gespeichert und gehen beim Weitergeben verloren.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
+            .padding()
+            .background(Color(NSColor.controlBackgroundColor))
+            .cornerRadius(10)
+            .frame(maxWidth: 500)
+
+            Spacer()
+        }
+        .padding()
+    }
+}
+
+// ------------------------------------------------------------
+// Schritt 6: Fertig
 // ------------------------------------------------------------
 struct FertigSchritt: View {
     let pfad:   String

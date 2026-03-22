@@ -37,6 +37,10 @@ struct Konfiguration: Codable {
     // Auto-Modus (Folder Watcher)
     var autoModus: Bool = false
 
+    // Metadaten & Tags
+    var exifMetadatenAktiv: Bool = true  // exiftool Keywords in PDF einbetten
+    var macOSTagsAktiv:     Bool = true  // macOS Finder Tags setzen
+
     // Ollama Prompt – anpassbar, Platzhalter werden zur Laufzeit ersetzt
     // {{personen}}   → Namen der Steuerpflichtigen
     // {{kategorien}} → Liste aller Kategorien
@@ -52,7 +56,7 @@ struct Konfiguration: Codable {
         Achte auf korrekte deutsche Umlaute (ä, ö, ü, Ä, Ö, Ü, ß) in allen Feldern.
 
         Format:
-        {"datum":"JJJJ-MM-TT","steuerjahr":"JJJJ","person":"...","belegtyp":"...","beschreibung":"...","betrag":"...","kategorie":"...","typ":"...","gemeinsam":"...","notiz":"..."}
+        {"datum":"JJJJ-MM-TT","steuerjahr":"JJJJ","person":"...","belegtyp":"...","beschreibung":"...","betrag":"...","kategorie":"...","typ":"...","gemeinsam":"...","notiz":"...","steuerrelevant":true}
 
         Regeln:
         - datum: Belegdatum JJJJ-MM-TT. Alle Formate umwandeln: "07.01.22"→"2022-01-07", "07.01.2022"→"2022-01-07". Fallback: {{jahr}}-01-01
@@ -82,6 +86,7 @@ struct Konfiguration: Codable {
             Steuerbescheid mit Erstattung → Einnahme
             Alles andere → Ausgabe
         - gemeinsam: ja oder nein
+        - steuerrelevant: true wenn steuerlich relevant (Lohnsteuerbescheinigung, Rechnung mit Steuerbezug, Krankheitskosten, Spenden etc.). false für rein private Unterlagen ohne Steuerbezug.
         - notiz: Steuerlicher Hinweis, max 60 Zeichen. Beispiele:
             "Bruttolohn lt. Lohnsteuerbescheinigung"
             "Kapitalerträge abgeltungssteuerpflichtig"
@@ -212,18 +217,19 @@ struct OllamaTagsAntwort: Codable {
 // ============================================================
 
 struct Beleg: Codable {
-    var ordnungsNr:   String = ""
-    var datum:        String = ""
-    var steuerjahr:   String = ""
-    var person:       String = ""
-    var belegtyp:     String = ""
-    var beschreibung: String = ""
-    var betrag:       Double = 0.0
-    var kategorie:    String = ""
-    var typ:          String = ""
-    var gemeinsam:    String = "nein"
-    var notiz:        String = ""
-    var dateiname:    String = ""
-    var archivPfad:   String = ""
-    var hash:         String = ""
+    var ordnungsNr:      String = ""
+    var datum:           String = ""
+    var steuerjahr:      String = ""
+    var person:          String = ""
+    var belegtyp:        String = ""
+    var beschreibung:    String = ""
+    var betrag:          Double = 0.0
+    var kategorie:       String = ""
+    var typ:             String = ""
+    var gemeinsam:       String = "nein"
+    var notiz:           String = ""
+    var dateiname:       String = ""
+    var archivPfad:      String = ""
+    var hash:            String = ""
+    var steuerrelevant:  Bool   = true  // Steuerbezug – steuert macOS Tags und exiftool Keywords
 }

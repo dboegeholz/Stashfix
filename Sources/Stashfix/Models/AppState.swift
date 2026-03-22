@@ -71,7 +71,7 @@ class AppState {
         guard let pfad = pfade.first(where: { FileManager.default.fileExists(atPath: $0) }) else { return }
 
         // Process auf Background-Thread starten um MainActor nicht zu blockieren
-        await Task.detached {
+        await Task.detached(priority: .background) {
             let process = Process()
             process.executableURL = URL(fileURLWithPath: pfad)
             process.arguments     = ["serve"]

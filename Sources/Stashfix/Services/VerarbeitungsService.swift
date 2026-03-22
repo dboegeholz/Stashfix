@@ -496,14 +496,35 @@ class VerarbeitungsService {
         beleg.belegtyp      = dict["belegtyp"]     as? String ?? "Sonstiges"
         beleg.beschreibung  = dict["beschreibung"] as? String ?? "Unbekannt"
         // Betrag: Ollama gibt manchmal String ("9.95"), manchmal Zahl (9.95) zurück
-        // Betrag: Komma→Punkt, €/EUR/Leerzeichen entfernen, dann parsen
+        // Betrag: deutsches Format (5.233,24) und englisches Format (5233.24) korrekt parsen
         func parseBetrag(_ str: String) -> Double {
-            let clean = str
+            var clean = str
                 .replacingOccurrences(of: "€", with: "")
                 .replacingOccurrences(of: "EUR", with: "")
                 .replacingOccurrences(of: " ", with: "")
-                .replacingOccurrences(of: ",", with: ".")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
+
+            // Deutsches Format: Punkt als Tausender, Komma als Dezimal → 5.233,24
+            // Englisches Format: Komma als Tausender, Punkt als Dezimal → 5,233.24
+            // Heuristik: wenn Komma VOR Punkt kommt → englisch, sonst → deutsch
+            let hatPunkt = clean.contains(".")
+            let hatKomma = clean.contains(",")
+
+            if hatPunkt && hatKomma {
+                if clean.range(of: ",")!.lowerBound < clean.range(of: ".")!.lowerBound {
+                    // Englisch: 5,233.24 → Komma entfernen
+                    clean = clean.replacingOccurrences(of: ",", with: "")
+                } else {
+                    // Deutsch: 5.233,24 → Punkt entfernen, Komma zu Punkt
+                    clean = clean.replacingOccurrences(of: ".", with: "")
+                    clean = clean.replacingOccurrences(of: ",", with: ".")
+                }
+            } else if hatKomma {
+                // Nur Komma: 14,97 → Dezimalkomma
+                clean = clean.replacingOccurrences(of: ",", with: ".")
+            }
+            // Nur Punkt: 14.97 → bereits korrekt
+
             return Double(clean) ?? 0.0
         }
         if let betragStr = dict["betrag"] as? String {

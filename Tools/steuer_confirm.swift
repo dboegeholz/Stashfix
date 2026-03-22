@@ -35,7 +35,7 @@ struct Beleg: Codable {
     var person1:             String
     var person2:             String
     var pdfpfad:             String
-    var steuerrelevant:      Bool
+    var steuerrelevant:      Bool?
     var kategorienEinnahmen: [String]
     var kategorienAusgaben:  [String]
     var kategorienBeides:    [String]
@@ -311,14 +311,11 @@ struct BestaetigungView: View {
                         // Steuerrelevanz
                         Feld(label: "Steuerrelevant") {
                             HStack(spacing: 10) {
-                                Toggle("", isOn: $beleg.steuerrelevant)
+                                Toggle("Relevant für Steuererklärung", isOn: Binding(
+                                    get: { beleg.steuerrelevant ?? true },
+                                    set: { beleg.steuerrelevant = $0 }
+                                ))
                                     .toggleStyle(.switch)
-                                    .labelsHidden()
-                                Text(beleg.steuerrelevant
-                                    ? "Ja – macOS Tag \"Steuer\" wird gesetzt"
-                                    : "Nein – kein Steuer-Tag")
-                                    .font(.caption)
-                                    .foregroundColor(beleg.steuerrelevant ? .green : .secondary)
                             }
                         }
 

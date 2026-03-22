@@ -25,6 +25,7 @@ struct Beleg: Codable {
     var person:              String
     var belegtyp:            String
     var beschreibung:        String
+    var aussteller:          String = ""
     var betrag:              String
     var kategorie:           String
     var typ:                 String
@@ -235,7 +236,14 @@ struct BestaetigungView: View {
 
                         // Beschreibung
                         Feld(label: "Beschreibung") {
-                            TextField("Absender / Dokumenttyp", text: $beleg.beschreibung)
+                            TextField("Dokumenttyp / Schlagwort", text: $beleg.beschreibung)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(minWidth: 280)
+                        }
+
+                        // Aussteller
+                        Feld(label: "Aussteller") {
+                            TextField("Name der ausstellenden Institution", text: $beleg.aussteller)
                                 .textFieldStyle(.roundedBorder)
                                 .frame(minWidth: 280)
                         }

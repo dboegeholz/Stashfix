@@ -41,6 +41,11 @@ struct Konfiguration: Codable {
     var exifMetadatenAktiv: Bool = true  // exiftool Keywords in PDF einbetten
     var macOSTagsAktiv:     Bool = true  // macOS Finder Tags setzen
 
+    // Prompt-Version – wird bei jeder inhaltlichen Prompt-Änderung erhöht.
+    // Beim Laden: wenn gespeicherte Version < aktuelle, wird Prompt automatisch migriert.
+    var promptVersion: Int = 0
+    static let aktuellePromptVersion = 12
+
     // Ollama Prompt – anpassbar, Platzhalter werden zur Laufzeit ersetzt
     // {{personen}}   → Namen der Steuerpflichtigen
     // {{kategorien}} → Liste aller Kategorien
@@ -52,55 +57,48 @@ struct Konfiguration: Codable {
     // entfernt /no_think automatisch wenn ein anderes Modell konfiguriert ist.
     var ollamaPrompt: String = Konfiguration.standardPrompt
 
+    // Backup des alten Prompts nach automatischer Migration – nil wenn kein Backup vorhanden
+    var ollamaPromptBackup: String? = nil
+
+    // true wenn der Nutzer den Prompt manuell bearbeitet hat – steuert ob Backup erstellt wird
+    var promptManuellBearbeitet: Bool = false
+
     static let standardPrompt = """
-        Du bist ein Assistent für deutsche Steuererklärungen.
-        Steuererklärung für: {{personen}}.
+        Du bist Experte für deutsches Steuerrecht. Analysiere den Dokumenttext und befülle das JSON mit deinem Fachwissen.
 
-        Antworte NUR mit kompaktem JSON in EINER einzigen Zeile – absolut keine Zeilenumbrüche, keine Einrückung, kein Pretty-Print. Beispiel: {"datum":"2024-01-01","steuerjahr":"2024",...}
-        Ohne Erklärung, ohne Backticks, ohne Markdown.
-        WICHTIG: Verwende EXAKT diese deutschen Feldnamen – keine englischen Übersetzungen, keine Abweichungen.
+        Antworte NUR mit kompaktem JSON in EINER Zeile, ohne Umbrüche, Backticks oder Erklärungen.
+        Verwende EXAKT diese deutschen Feldnamen:
 
-        Format (eine Zeile, keine Umbrüche):
-        {"datum":"JJJJ-MM-TT","steuerjahr":"JJJJ","person":"...","belegtyp":"...","beschreibung":"...","betrag":"...","kategorie":"...","typ":"...","gemeinsam":"...","notiz":"...","steuerrelevant":true}
+        {"datum":"JJJJ-MM-TT","steuerjahr":"JJJJ","person":"...","belegtyp":"...","beschreibung":"...","aussteller":"...","betrag":0.00,"kategorie":"...","typ":"...","gemeinsam":"...","notiz":"...","steuerrelevant":true}
 
-        Regeln:
-        - datum: Belegdatum JJJJ-MM-TT. Alle Formate umwandeln: "07.01.22"→"2022-01-07", "07.01.2022"→"2022-01-07". Fallback: {{jahr}}-01-01
-        - steuerjahr: Das steuerlich relevante Abrechnungsjahr – NICHT das Ausstellungsdatum des Dokuments.
-            Bei Kapitalertragsbescheinigung/Jahressteuerbescheinigung: das Kalenderjahr das bescheinigt wird (steht explizit im Dokument, z.B. "für das Kalenderjahr 2024" → "2024").
-            Bei Lohnsteuerbescheinigung: das Abrechnungsjahr (steht groß auf dem Dokument).
-            Bei allen anderen: Jahr aus datum.
-            WICHTIG: Ein Dokument vom März 2025 über das Kalenderjahr 2024 hat steuerjahr "2024", nicht "2025".
-        - person: Wem gehört dieser Beleg? Nur einen der folgenden Werte verwenden: {{personen}}
-            Prüfe ob ein Name im Dokument vorkommt der zu einer der Personen passt (auch Teilübereinstimmung, z.B. zweiter Vorname). Falls eindeutig einer Person zuzuordnen: diesen Namen verwenden. Falls unklar oder beide betroffen: "Gemeinsam". Feldname ist immer "person", nicht "steuerpflichtiger" oder "empfaenger".
-        - belegtyp: Wähle den passendsten aus diesen Werten (exakt so schreiben):
-            Rechnung | Quittung | Lohnsteuerbescheinigung | Bescheinigung | Kontoauszug | Vertrag | Sonstiges
-        - beschreibung: Kurzes Schlagwort für den Dokumentinhalt, max 30 Zeichen. Beispiele: "Kapitalertragssteuerbescheinigung", "Lohnsteuerbescheinigung", "Rechnung Strom", "Arztrechnung". NICHT der Name des Ausstellers.
-        - betrag: NUR der finale GESAMTBETRAG als Zahl mit Punkt. Falls kein Betrag im Text erkennbar: 0
-            Kassenbon: neben "Total", "Gesamt", "SUMME" oder "EUR [Betrag]"
-            Lohnsteuerbescheinigung: Bruttoarbeitslohn (Zeile 3). WICHTIG: Der Betrag steht in zwei Spalten – Euro-Betrag links (z.B. "42.350") und Cent rechts (z.B. "00"). Kombiniere beide: "42.350" + "00" = 42350.00. Der Punkt ist Tausendertrennzeichen, KEIN Dezimalzeichen. Niemals "42.350" als 42,35 interpretieren.
-            Kapitalertragsbescheinigung: NUR der Betrag aus Zeile 7 Anlage KAP ("Höhe der Kapitalerträge"). WICHTIG: Das Layout ist mehrzeilig – "Zeile 7 Anlage KAP" steht auf einer Zeile, dann folgt "EUR" auf einer eigenen Zeile, dann der Betrag auf der nächsten Zeile (z.B. "209,11"). Suche die Zeile mit "Zeile 7" und nimm den ersten Zahlenwert der danach erscheint, auch wenn er mehrere Zeilen weiter unten steht. NICHT Zeile 37 (Kapitalertragsteuer), NICHT Zeile 38 (Solidaritätszuschlag). Komma ist Dezimaltrennzeichen: "209,11" = 209.11, NICHT 20911.
-            Steuerbescheid: festgesetzte Steuer oder Erstattungsbetrag
-            Sonst: der wichtigste Betrag des Dokuments. Falls kein Betrag erkennbar: 0
-        - kategorie: Wähle die am besten passende Kategorie aus dieser Liste: {{kategorien}}
-            Ordne den Dokumentinhalt inhaltlich zu – nicht nach Kategorienamen sondern nach Bedeutung.
-            Kapitalerträge, Zinsen, Dividenden, Wertpapiere → wähle die Kategorie die am ehesten "Kapitalerträge" bedeutet
-            Lohn, Gehalt, Arbeitslohn → wähle die Kategorie die am ehesten "Arbeitslohn" bedeutet
-            Arzt, Krankenhaus, Medikamente → wähle die Kategorie die am ehesten "Krankheitskosten" bedeutet
-            Handwerker, Reparatur, Baumarkt → wähle die Kategorie die am ehesten "Handwerkerleistungen" bedeutet
-            Versicherung → wähle die Kategorie die am ehesten "Vorsorgeaufwendungen" bedeutet
-            Spende → wähle die Kategorie die am ehesten "Spenden" bedeutet
-            Falls keine Kategorie passt: wähle die inhaltlich nächste aus der Liste.
-        - typ: "Einnahme" oder "Ausgabe" – leite dies aus dem Dokumentinhalt ab, NICHT aus dem Kategorienamen:
-            Einnahme: Kapitalerträge, Zinsen, Dividenden, Lohn/Gehalt, Steuererstattung, Mieteinnahmen – alles was Geldeingang bescheinigt
-            Ausgabe: Rechnungen, Kassenbons, Quittungen, gezahlte Beiträge – alles was Geldausgang belegt
-            WICHTIG: Ein Dokument über Kapitalerträge ist IMMER eine Einnahme, auch wenn darauf Steuern ausgewiesen sind.
-        - gemeinsam: ja oder nein
-        - steuerrelevant: true wenn steuerlich relevant (Lohnsteuerbescheinigung, Rechnung mit Steuerbezug, Krankheitskosten, Spenden etc.). false für rein private Unterlagen ohne Steuerbezug.
-        - notiz: Steuerlicher Hinweis, max 60 Zeichen. Beispiele:
-            "Bruttolohn lt. Lohnsteuerbescheinigung"
-            "Kapitalerträge abgeltungssteuerpflichtig"
-            "FFP2-Masken, ggf. Krankheitskosten absetzbar"
-            "leer" wenn kein Hinweis nötig
+        Strikte Vorgaben (keine Abweichung):
+
+        person – NUR einer dieser Werte:
+        {{person_regel}}
+
+        belegtyp – NUR einer dieser Werte:
+        Rechnung | Quittung | Lohnsteuerbescheinigung | Bescheinigung | Kontoauszug | Vertrag | Sonstiges
+
+        steuerjahr – das steuerlich relevante Jahr, NICHT das Ausstellungsdatum.
+        Ein Dokument vom März 2025 über Kalenderjahr 2024 → steuerjahr "2024".
+
+        typ – "Einnahme" oder "Ausgabe":
+        WICHTIG: Wenn eine Rechnung oder Quittung an {{personen}} adressiert ist → IMMER "Ausgabe".
+        Einnahme nur bei: Lohnbescheinigung, Kapitalertragsbescheinigung, Steuererstattung, Mieteinnahmen, selbst gestellte Rechnungen.
+
+        betrag – Achtung bei diesen Dokumenttypen:
+        Lohnsteuerbescheinigung: Bruttoarbeitslohn Zeile 3. Euro- und Cent-Spalte zusammensetzen (z.B. "42.350" + "00" = 42350.00). Punkt = Tausendertrennzeichen, KEIN Dezimalzeichen.
+        Kapitalertragsbescheinigung: NUR Zeile 7 Anlage KAP. Mehrzeiliges Layout: erst "Zeile 7", dann "EUR", dann Betrag (kann mehrere Zeilen weiter unten stehen). NICHT Zeile 37/38. Komma = Dezimaltrennzeichen: "209,11" = 209.11, NICHT 20911.
+        Sonst: wichtigster steuerrelevanter Betrag. Nicht erkennbar → 0
+
+        Freie Felder (nutze dein Fachwissen):
+        beschreibung – präziser Dokumenttitel wie ein Steuerberater ihn verwenden würde (max 40 Zeichen)
+        aussteller – ausstellende Institution oder Person (max 40 Zeichen, "Unbekannt" falls nicht erkennbar)
+        kategorie – passendste aus: {{kategorien}}
+        typ – "Einnahme" oder "Ausgabe" nach wirtschaftlichem Gehalt
+        gemeinsam – "ja" oder "nein"
+        steuerrelevant – true oder false
+        notiz – fachlicher Hinweis für den Steuerberater (max 60 Zeichen, "leer" wenn nicht nötig)
 
         Dokumenttext:
         {{text}}
@@ -140,12 +138,11 @@ struct Konfiguration: Codable {
     // Laden
     static func laden() -> Konfiguration {
         let pfad = speicherPfad
-        guard let data = FileManager.default.contents(atPath: pfad),
-              let konfig = try? JSONDecoder().decode(Konfiguration.self, from: data)
-        else {
+        guard let data = FileManager.default.contents(atPath: pfad) else {
+            // Erster Start – frische Konfiguration mit aktuellem Prompt
             var standard = Konfiguration()
-            standard.archivPfad = documentsPfad
-            // _Inbox beim ersten Start anlegen
+            standard.archivPfad    = documentsPfad
+            standard.promptVersion = aktuellePromptVersion
             let inbox = documentsPfad + "/_Inbox"
             try? FileManager.default.createDirectory(
                 atPath: inbox,
@@ -153,7 +150,42 @@ struct Konfiguration: Codable {
             )
             return standard
         }
-        return konfig
+
+        // Bestehende Konfiguration laden – fehlende neue Felder bekommen Defaultwerte
+        if var konfig = try? JSONDecoder().decode(Konfiguration.self, from: data) {
+            // Auto-Migration: Prompt auf neue Version aktualisieren
+            // Backup nur wenn der Nutzer den Prompt manuell bearbeitet hatte
+            if konfig.promptVersion < aktuellePromptVersion {
+                if konfig.promptManuellBearbeitet {
+                    konfig.ollamaPromptBackup = konfig.ollamaPrompt
+                }
+                konfig.ollamaPrompt           = standardPrompt
+                konfig.promptVersion          = aktuellePromptVersion
+                konfig.promptManuellBearbeitet = false
+                konfig.speichern()
+            }
+            return konfig
+        }
+
+        // Fallback: JSON vorhanden aber nicht vollständig dekodierbar
+        // Alle vorhandenen Werte retten – KEINE stillen Änderungen
+        if let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            var gerettet = Konfiguration()
+            gerettet.archivPfad    = dict["archivPfad"]    as? String ?? documentsPfad
+            gerettet.person1       = dict["person1"]       as? String ?? ""
+            gerettet.person2       = dict["person2"]       as? String ?? ""
+            gerettet.modus         = (dict["modus"] as? String).flatMap(Konfiguration.Modus.init) ?? .einzel
+            gerettet.ollamaModell  = dict["ollamaModell"]  as? String ?? "qwen3:8b"
+            gerettet.ollamaURL     = dict["ollamaURL"]     as? String ?? "http://localhost:11434"
+            gerettet.ollamaPrompt  = dict["ollamaPrompt"]  as? String ?? standardPrompt
+            gerettet.promptVersion = dict["promptVersion"] as? Int    ?? 0
+            return gerettet
+        }
+
+        // Letzter Fallback
+        var standard = Konfiguration()
+        standard.archivPfad = documentsPfad
+        return standard
     }
 
     // Speichern in Documents
@@ -232,6 +264,7 @@ struct Beleg: Codable {
     var person:          String = ""
     var belegtyp:        String = ""
     var beschreibung:    String = ""
+    var aussteller:      String = ""
     var betrag:          Double = 0.0
     var kategorie:       String = ""
     var typ:             String = ""

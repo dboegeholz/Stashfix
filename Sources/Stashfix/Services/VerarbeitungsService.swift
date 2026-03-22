@@ -287,13 +287,31 @@ class VerarbeitungsService {
 
         // 4. KI-Analyse
         appState.statusAktualisieren(datei: dateiname, schritt: "KI analysiert Dokument...")
+
+        // Person-Erkennung: Regex zuerst, LLM als Schlichter bei Unklarheit
+        // LLM bekommt nur erlaubte Werte als Optionen – kein Halluzinieren möglich
+        let personAusOCR = personAusText(extrahierterText)
+
         var beleg: Beleg
         if let analysierterBeleg = await ollamaAnalysieren(text: extrahierterText, dateiname: dateiname) {
             beleg = analysierterBeleg
+            if let person = personAusOCR {
+                // Regex eindeutig → direkt übernehmen
+                DevLog.shared.log("Person: Regex → \(person)", typ: .info)
+                beleg.person    = person
+                beleg.gemeinsam = (person == "Gemeinsam") ? "ja" : "nein"
+            } else {
+                // Regex unklar → LLM-Ergebnis validieren
+                // personZuordnen stellt sicher dass nur erlaubte Werte durchkommen
+                let llmPerson = personZuordnen(beleg.person)
+                DevLog.shared.log("Person: LLM (validiert) → \(llmPerson)", typ: .info)
+                beleg.person    = llmPerson
+                beleg.gemeinsam = (llmPerson == "Gemeinsam") ? "ja" : "nein"
+            }
         } else {
             // KI-Analyse fehlgeschlagen – leeren Beleg zur manuellen Bearbeitung anbieten
             DevLog.shared.log("KI-Analyse fehlgeschlagen – öffne Bestätigungsfenster zur manuellen Eingabe", typ: .fehler)
-            let heute = ISO8601DateFormatter().string(from: Date()).prefix(10)
+            let heute = VerarbeitungsService.isoDateFormatter.string(from: Date()).prefix(10)
             let fallbackJahr = String(Calendar.current.component(.year, from: Date()))
             var leerBeleg = Beleg()
             leerBeleg.datum        = String(heute)
@@ -301,6 +319,7 @@ class VerarbeitungsService {
             leerBeleg.person       = appState.konfig.person1
             leerBeleg.belegtyp     = "Sonstiges"
             leerBeleg.beschreibung = "Manuell prüfen"
+            leerBeleg.aussteller   = "Unbekannt"
             leerBeleg.betrag       = 0.0
             leerBeleg.kategorie    = appState.konfig.kategorien.first?.name ?? "Sonstiges"
             leerBeleg.typ          = "Ausgabe"
@@ -528,13 +547,47 @@ class VerarbeitungsService {
             ? "\(konfig.person1), \(konfig.person2) oder Gemeinsam"
             : konfig.person1
 
+        // Person-Regel je nach Modus – Einzelperson hat nur einen erlaubten Wert
+        let personRegel: String
+        if konfig.modus == .paar {
+            let p1parts = konfig.person1.components(separatedBy: " ").filter { !$0.isEmpty }
+            let p2parts = konfig.person2.components(separatedBy: " ").filter { !$0.isEmpty }
+
+            // Bei gleichem Nachnamen nur Vornamen als Erkennungstoken nutzen
+            let gleicherNachname = p1parts.last?.lowercased() == p2parts.last?.lowercased()
+            let p1tokens: String
+            let p2tokens: String
+            if gleicherNachname {
+                // Nur Vornamen – Nachname ist nicht eindeutig
+                p1tokens = p1parts.dropLast().joined(separator: ", ")
+                p2tokens = p2parts.dropLast().joined(separator: ", ")
+            } else {
+                p1tokens = p1parts.joined(separator: ", ")
+                p2tokens = p2parts.joined(separator: ", ")
+            }
+
+            let nachnameHinweis = gleicherNachname
+                ? " (WICHTIG: gleicher Nachname – nur Vornamen zur Unterscheidung nutzen)"
+                : ""
+            personRegel = """
+                "\(konfig.person1)" → wenn Vorname [\(p1tokens)] im Dokument steht\(nachnameHinweis)
+                "\(konfig.person2)" → wenn Vorname [\(p2tokens)] im Dokument steht\(nachnameHinweis)
+                "Gemeinsam"         → beide Vornamen vorhanden, kein Name erkennbar, oder Sammelbegriffe wie Eheleute/Familie
+                """
+        } else {
+            personRegel = "\"\(konfig.person1)\" → immer, da nur eine Person konfiguriert ist"
+        }
+
         // FIX Arch#3: /no_think nur bei Qwen-Modellen anhängen
         let istQwen = konfig.ollamaModell.lowercased().hasPrefix("qwen")
         var prompt = konfig.ollamaPrompt
-            .replacingOccurrences(of: "{{personen}}",   with: personen)
-            .replacingOccurrences(of: "{{kategorien}}", with: kategorien)
-            .replacingOccurrences(of: "{{jahr}}",       with: String(fallbackJahr))
-            .replacingOccurrences(of: "{{text}}",       with: text)
+            .replacingOccurrences(of: "{{personen}}",    with: personen)
+            .replacingOccurrences(of: "{{person1}}",     with: konfig.person1)
+            .replacingOccurrences(of: "{{person2}}",     with: konfig.modus == .paar ? konfig.person2 : konfig.person1)
+            .replacingOccurrences(of: "{{person_regel}}", with: personRegel)
+            .replacingOccurrences(of: "{{kategorien}}",  with: kategorien)
+            .replacingOccurrences(of: "{{jahr}}",        with: String(fallbackJahr))
+            .replacingOccurrences(of: "{{text}}",        with: text)
         if !istQwen {
             prompt = prompt
                 .replacingOccurrences(of: "\n/no_think", with: "")
@@ -542,41 +595,32 @@ class VerarbeitungsService {
         }
 
         DevLog.shared.log("Ollama → Modell: \(konfig.ollamaModell), \(text.count) Z. (Versuch \(versuch))", typ: .ollama)
+        DevLog.shared.log("Person-Regel: \(personRegel)", typ: .info)
         guard let url = URL(string: "\(konfig.ollamaURL)/api/generate") else { return nil }
 
         // Adaptiver Thinking-Modus (nur Qwen3):
-        // Kurze Dokumente (≤ 1500 Z.): think:false – schnell, ausreichend für einfache Belege
-        // Lange Dokumente (> 1500 Z.):  Thinking an  – zuverlässiger bei komplexen Dokumenten
+        // Kurze Dokumente (≤ 1500 Z.): think:false – schnell
+        // Lange Dokumente (> 1500 Z.):  Thinking an  – zuverlässiger
         // Nicht-Qwen-Modelle: think-Parameter wird nicht gesendet
         let brauchtThinking = istQwen && text.count > 1500
         DevLog.shared.log("Thinking-Modus: \(brauchtThinking ? "an" : "aus") (\(text.count) Z.)", typ: .info)
 
-        struct OllamaRequestMitThinking: Codable {
-            let model: String; let prompt: String; let stream: Bool
-            let think: Bool
-            let options: Options
-            struct Options: Codable { let num_predict: Int }
-        }
-        struct OllamaRequestOhneThinking: Codable {
-            let model: String; let prompt: String; let stream: Bool
+        // Warn#1: Einzelner Struct mit optionalem think-Feld –
+        // JSONEncoder kodiert nil-Werte nicht (encodeIfPresent-Semantik via Optional)
+        struct OllamaRequest: Codable {
+            let model: String
+            let prompt: String
+            let stream: Bool
+            let think:   Bool?   // nil = nicht senden (Nicht-Qwen-Modelle)
             let options: Options
             struct Options: Codable { let num_predict: Int }
         }
         let maxTokens = brauchtThinking ? 4096 : 600
-        let body: Data?
-        if istQwen {
-            body = try? JSONEncoder().encode(
-                OllamaRequestMitThinking(model: konfig.ollamaModell, prompt: prompt, stream: true,
-                                         think: brauchtThinking,
-                                         options: .init(num_predict: maxTokens))
-            )
-        } else {
-            body = try? JSONEncoder().encode(
-                OllamaRequestOhneThinking(model: konfig.ollamaModell, prompt: prompt, stream: true,
-                                          options: .init(num_predict: maxTokens))
-            )
-        }
-        guard let body = body else { return nil }
+        guard let body = try? JSONEncoder().encode(
+            OllamaRequest(model: konfig.ollamaModell, prompt: prompt, stream: true,
+                          think:   istQwen ? brauchtThinking : nil,
+                          options: .init(num_predict: maxTokens))
+        ) else { return nil }
 
         var request        = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -663,30 +707,104 @@ class VerarbeitungsService {
     }
 
     // ------------------------------------------------------------
-    // Person-Zuordnung: token-basierter Abgleich mit konfigurierten Namen
-    // Fängt Varianten wie zweite Vornamen, Tippfehler im Dokument ab.
-    // Gibt Person1, Person2 oder "Gemeinsam" zurück.
+    // Person-Erkennung direkt in Swift via Regex
+    // Sucht den vollen Namen als Phrase (beide Reihenfolgen)
+    // um Fehlzuordnungen durch gleichlautende Vornamen zu vermeiden
+    // Gibt nil zurück wenn unklar – dann entscheidet das LLM
     // ------------------------------------------------------------
+    private func personAusText(_ text: String) -> String? {
+        let konfig = appState.konfig
+        guard konfig.modus == .paar else { return konfig.person1 }
+
+        func enthaeltVollstaendigenNamen(_ name: String) -> Bool {
+            let parts = name.components(separatedBy: " ").filter { !$0.isEmpty }
+            guard parts.count >= 2 else {
+                let pattern = "(?i)\\b\(NSRegularExpression.escapedPattern(for: name))\\b"
+                return text.range(of: pattern, options: .regularExpression) != nil
+            }
+            let vorname  = NSRegularExpression.escapedPattern(for: parts.first!)
+            let nachname = NSRegularExpression.escapedPattern(for: parts.last!)
+            let p1 = "(?i)\\b\(vorname)\\s+\(nachname)\\b"
+            let p2 = "(?i)\\b\(nachname),?\\s+\(vorname)\\b"
+            return text.range(of: p1, options: .regularExpression) != nil
+                || text.range(of: p2, options: .regularExpression) != nil
+        }
+
+        let p1Treffer = enthaeltVollstaendigenNamen(konfig.person1)
+        let p2Treffer = enthaeltVollstaendigenNamen(konfig.person2)
+
+        DevLog.shared.log("Person-Regex: P1(\(konfig.person1))=\(p1Treffer) P2(\(konfig.person2))=\(p2Treffer)", typ: .info)
+
+        if p1Treffer && !p2Treffer { return konfig.person1 }
+        if p2Treffer && !p1Treffer { return konfig.person2 }
+        if p1Treffer && p2Treffer  { return "Gemeinsam" }
+        // Kein Name gefunden – LLM entscheiden lassen
+        DevLog.shared.log("Person-Regex: kein Name gefunden – LLM entscheidet", typ: .info)
+        return nil
+    }
+    // personZuordnen: validiert LLM-Ausgabe – nur konfigurierte Namen oder "Gemeinsam"
+    // Verhindert halluzinierte Namen wie "Peter Berlit" (Autor im Dokument)
     private func personZuordnen(_ name: String) -> String {
         let konfig = appState.konfig
-        guard !name.trimmingCharacters(in: .whitespaces).isEmpty else { return "Gemeinsam" }
+        let p1 = konfig.person1
+        let p2 = konfig.person2
 
+        // Exakter Treffer – Modell hat korrekt gearbeitet
+        if name == p1 { return p1 }
+        if konfig.modus == .paar && name == p2 { return p2 }
+        if name == "Gemeinsam" { return "Gemeinsam" }
+
+        // Fallback: token-basierter Abgleich für Varianten (zweite Vornamen etc.)
         let nameLower  = name.lowercased()
-        let p1Token    = konfig.person1.lowercased().components(separatedBy: " ").filter { !$0.isEmpty }
+        let p1Token    = p1.lowercased().components(separatedBy: " ").filter { !$0.isEmpty }
         let p2Token    = konfig.modus == .paar
-            ? konfig.person2.lowercased().components(separatedBy: " ").filter { !$0.isEmpty }
+            ? p2.lowercased().components(separatedBy: " ").filter { !$0.isEmpty }
             : []
         let nameToken  = nameLower.components(separatedBy: " ").filter { !$0.isEmpty }
 
         let p1Treffer  = nameToken.filter { p1Token.contains($0) }.count
         let p2Treffer  = nameToken.filter { p2Token.contains($0) }.count
 
-        DevLog.shared.log("Person-Zuordnung: '\(name)' → P1:\(p1Treffer) P2:\(p2Treffer)", typ: .info)
+        if p1Treffer > 0 && p1Treffer >= p2Treffer {
+            DevLog.shared.log("Person-Zuordnung: '\(name)' → \(p1) (Fallback)", typ: .info)
+            return p1
+        }
+        if p2Treffer > 0 {
+            DevLog.shared.log("Person-Zuordnung: '\(name)' → \(p2) (Fallback)", typ: .info)
+            return p2
+        }
 
-        if p1Treffer > 0 && p1Treffer >= p2Treffer { return konfig.person1 }
-        if p2Treffer > 0 { return konfig.person2 }
+        DevLog.shared.log("Person-Zuordnung: '\(name)' nicht erkannt → Gemeinsam", typ: .info)
         return "Gemeinsam"
     }
+    // Unterstützt DE-Format (5.233,24) und EN-Format (5,233.24)
+    private func parseBetrag(_ str: String) -> Double {
+        var clean = str
+            .replacingOccurrences(of: "€",   with: "")
+            .replacingOccurrences(of: "EUR", with: "")
+            .replacingOccurrences(of: " ",   with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let hatPunkt = clean.contains(".")
+        let hatKomma = clean.contains(",")
+        if hatPunkt && hatKomma {
+            if clean.range(of: ",")!.lowerBound < clean.range(of: ".")!.lowerBound {
+                clean = clean.replacingOccurrences(of: ",", with: "")
+            } else {
+                clean = clean.replacingOccurrences(of: ".", with: "")
+                clean = clean.replacingOccurrences(of: ",", with: ".")
+            }
+        } else if hatKomma {
+            clean = clean.replacingOccurrences(of: ",", with: ".")
+        }
+        return Double(clean) ?? 0.0
+    }
+
+    // Info#1: Einmalig erstellter Formatter – Instanziierung ist teuer
+    private static let isoDateFormatter: ISO8601DateFormatter = ISO8601DateFormatter()
+
+    // Info#2: Erlaubte Belegtypen als Konstante – verhindert Desync mit steuer_confirm
+    private static let erlaubteBelegtypen = ["Rechnung", "Quittung", "Lohnsteuerbescheinigung",
+                                              "Bescheinigung", "Kontoauszug", "Vertrag", "Sonstiges"]
 
     // ------------------------------------------------------------
     // JSON-Antwort in Beleg umwandeln
@@ -737,10 +855,8 @@ class VerarbeitungsService {
         beleg.person        = personZuordnen(personRoh)
 
         // Belegtyp auf erlaubte Frontend-Werte beschränken
-        let erlaubteBelegtypen = ["Rechnung", "Quittung", "Lohnsteuerbescheinigung",
-                                  "Bescheinigung", "Kontoauszug", "Vertrag", "Sonstiges"]
         let belegtypRoh = dict["belegtyp"] as? String ?? "Sonstiges"
-        if erlaubteBelegtypen.contains(belegtypRoh) {
+        if VerarbeitungsService.erlaubteBelegtypen.contains(belegtypRoh) {
             beleg.belegtyp = belegtypRoh
         } else if belegtypRoh.lowercased().contains("bescheinigung") {
             beleg.belegtyp = "Bescheinigung"
@@ -760,27 +876,7 @@ class VerarbeitungsService {
             beleg.belegtyp = "Sonstiges"
         }
         beleg.beschreibung  = dict["beschreibung"] as? String ?? "Unbekannt"
-
-        func parseBetrag(_ str: String) -> Double {
-            var clean = str
-                .replacingOccurrences(of: "€",   with: "")
-                .replacingOccurrences(of: "EUR", with: "")
-                .replacingOccurrences(of: " ",   with: "")
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            let hatPunkt = clean.contains(".")
-            let hatKomma = clean.contains(",")
-            if hatPunkt && hatKomma {
-                if clean.range(of: ",")!.lowerBound < clean.range(of: ".")!.lowerBound {
-                    clean = clean.replacingOccurrences(of: ",", with: "")
-                } else {
-                    clean = clean.replacingOccurrences(of: ".", with: "")
-                    clean = clean.replacingOccurrences(of: ",", with: ".")
-                }
-            } else if hatKomma {
-                clean = clean.replacingOccurrences(of: ",", with: ".")
-            }
-            return Double(clean) ?? 0.0
-        }
+        beleg.aussteller    = dict["aussteller"]   as? String ?? "Unbekannt"
 
         if let betragStr = dict["betrag"] as? String {
             beleg.betrag = parseBetrag(betragStr)
@@ -796,15 +892,34 @@ class VerarbeitungsService {
         beleg.notiz          = dict["notiz"]          as? String ?? "leer"
         beleg.steuerrelevant = dict["steuerrelevant"] as? Bool   ?? true
 
-        // Sicherheitsnetz: Typ aus Kategorie ableiten wenn Modell falsch liegt
-        // Kapitalerträge, Arbeitslohn, Rente etc. sind immer Einnahmen
-        let einnahmeKategorien = ["kapitalertrag", "arbeitslohn", "rente", "pension",
-                                  "vermietung", "verpachtung", "freiberuflich", "einnahme"]
-        let kategorieLower = beleg.kategorie.lowercased()
-        if einnahmeKategorien.contains(where: { kategorieLower.contains($0) }) {
-            if beleg.typ == "Ausgabe" {
-                DevLog.shared.log("Typ korrigiert: Ausgabe → Einnahme (Kategorie: \(beleg.kategorie))", typ: .info)
-                beleg.typ = "Einnahme"
+        // Typ aus Kategorie-Konfiguration ableiten – zuverlässiger als LLM
+        // Nur wenn Kategorie eindeutig als Einnahme oder Ausgabe konfiguriert ist
+        let kategorieKonfig = appState.konfig.kategorien.first { $0.name == beleg.kategorie }
+        if let kat = kategorieKonfig {
+            switch kat.typ {
+            case .einnahme:
+                if beleg.typ != "Einnahme" {
+                    DevLog.shared.log("Typ aus Kategorie: \(beleg.typ) → Einnahme (\(beleg.kategorie))", typ: .info)
+                    beleg.typ = "Einnahme"
+                }
+            case .ausgabe:
+                if beleg.typ != "Ausgabe" {
+                    DevLog.shared.log("Typ aus Kategorie: \(beleg.typ) → Ausgabe (\(beleg.kategorie))", typ: .info)
+                    beleg.typ = "Ausgabe"
+                }
+            case .beides:
+                break // LLM-Entscheidung beibehalten
+            }
+        } else {
+            // Kategorie nicht konfiguriert – Sicherheitsnetz für bekannte Einnahme-Keywords
+            let einnahmeKategorien = ["kapitalertrag", "arbeitslohn", "rente", "pension",
+                                      "vermietung", "verpachtung", "freiberuflich"]
+            let kategorieLower = beleg.kategorie.lowercased()
+            if einnahmeKategorien.contains(where: { kategorieLower.contains($0) }) {
+                if beleg.typ == "Ausgabe" {
+                    DevLog.shared.log("Typ korrigiert: Ausgabe → Einnahme (Kategorie: \(beleg.kategorie))", typ: .info)
+                    beleg.typ = "Einnahme"
+                }
             }
         }
 
@@ -839,6 +954,7 @@ class VerarbeitungsService {
             "person":              beleg.person,
             "belegtyp":            beleg.belegtyp,
             "beschreibung":        beleg.beschreibung,
+            "aussteller":          beleg.aussteller,
             "betrag":              String(format: "%.2f", beleg.betrag),
             "kategorie":           beleg.kategorie,
             "typ":                 beleg.typ,
@@ -879,6 +995,9 @@ class VerarbeitungsService {
                        let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
                         if let sj = dict["steuerjahr"] as? String, !sj.isEmpty {
                             result?.steuerjahr = sj
+                        }
+                        if let au = dict["aussteller"] as? String, !au.isEmpty {
+                            result?.aussteller = au
                         }
                         result?.steuerrelevant = dict["steuerrelevant"] as? Bool ?? true
                     }
@@ -930,6 +1049,7 @@ class VerarbeitungsService {
 
         var tags = [beleg.kategorie, beleg.belegtyp, beleg.typ, ausstellungsjahr, "Stashfix"]
         if !beleg.beschreibung.isEmpty { tags.append(beleg.beschreibung) }
+        if !beleg.aussteller.isEmpty && beleg.aussteller != "Unbekannt" { tags.append(beleg.aussteller) }
         if !beleg.person.isEmpty       { tags.append(beleg.person) }
         if beleg.steuerrelevant {
             tags += ["Steuer", "Steuerjahr-\(beleg.steuerjahr.isEmpty ? ausstellungsjahr : beleg.steuerjahr)"]
@@ -939,9 +1059,10 @@ class VerarbeitungsService {
             _ = await prozessAusfuehren(pfad: exiftoolPfad, argumente: [
                 "-Title=\(beleg.beschreibung)",
                 "-Subject=\(beleg.kategorie)",
+                "-Publisher=\(beleg.aussteller)",
                 "-Keywords=\(tags.joined(separator: ", "))",
                 "-Author=\(beleg.person)",
-                "-Comment=Nr: \(beleg.ordnungsNr) | \(String(format: "%.2f", beleg.betrag)) EUR | \(beleg.belegtyp) | \(beleg.notiz)",
+                "-Comment=Nr: \(beleg.ordnungsNr) | \(String(format: "%.2f", beleg.betrag)) EUR | \(beleg.belegtyp) | \(beleg.aussteller) | \(beleg.notiz)",
                 "-overwrite_original",
                 pdfURL.path
             ])
@@ -981,7 +1102,8 @@ class VerarbeitungsService {
         }
 
         let beschreibungFuerName = beschreibungFuerDateiname(beleg.beschreibung)
-        let neuerName = "\(beleg.ordnungsNr)_\(beleg.datum)_\(beschreibungFuerName)_\(String(format: "%.2f", beleg.betrag))EUR.pdf"
+        let ausstellerFuerName   = beschreibungFuerDateiname(beleg.aussteller)
+        let neuerName = "\(beleg.ordnungsNr)_\(beleg.datum)_\(beschreibungFuerName)_\(ausstellerFuerName)_\(String(format: "%.2f", beleg.betrag))EUR.pdf"
         let zielURL   = URL(fileURLWithPath: "\(zielOrdner)/\(neuerName)")
 
         do {
@@ -1007,19 +1129,19 @@ class VerarbeitungsService {
             let csvPfad: String; let header: String; let zeile: String
             if beleg.typ == "Einnahme" {
                 csvPfad = "\(basis)/\(jahr)/Einnahmen_\(jahr).csv"
-                header  = "Nr;Datum;Person;Belegtyp;Beschreibung;Betrag in EUR;Kategorie;Notiz;Dateiname"
-                zeile   = "\(beleg.ordnungsNr);\(datumAnzeige(beleg.datum));\(beleg.person);\(beleg.belegtyp);\(beleg.beschreibung);\(betragFormatiert);\(beleg.kategorie);\(beleg.notiz);\(datname)"
+                header  = "Nr;Datum;Person;Belegtyp;Beschreibung;Aussteller;Betrag in EUR;Kategorie;Notiz;Dateiname"
+                zeile   = "\(beleg.ordnungsNr);\(datumAnzeige(beleg.datum));\(beleg.person);\(beleg.belegtyp);\(beleg.beschreibung);\(beleg.aussteller);\(betragFormatiert);\(beleg.kategorie);\(beleg.notiz);\(datname)"
             } else {
                 csvPfad = "\(basis)/\(jahr)/Ausgaben_\(jahr).csv"
-                header  = "Nr;Datum;Person;Belegtyp;Beschreibung;Betrag in EUR;Kategorie;Gemeinsam;Notiz;Dateiname"
-                zeile   = "\(beleg.ordnungsNr);\(datumAnzeige(beleg.datum));\(beleg.person);\(beleg.belegtyp);\(beleg.beschreibung);\(betragFormatiert);\(beleg.kategorie);\(beleg.gemeinsam);\(beleg.notiz);\(datname)"
+                header  = "Nr;Datum;Person;Belegtyp;Beschreibung;Aussteller;Betrag in EUR;Kategorie;Gemeinsam;Notiz;Dateiname"
+                zeile   = "\(beleg.ordnungsNr);\(datumAnzeige(beleg.datum));\(beleg.person);\(beleg.belegtyp);\(beleg.beschreibung);\(beleg.aussteller);\(betragFormatiert);\(beleg.kategorie);\(beleg.gemeinsam);\(beleg.notiz);\(datname)"
             }
             csvZeileSchreiben(pfad: csvPfad, header: header, zeile: zeile)
         } else {
             let jahr    = String(beleg.datum.prefix(4))
             let csvPfad = "\(basis)/\(jahr)/Unterlagen_\(jahr).csv"
-            let header  = "Nr;Datum;Belegtyp;Beschreibung;Betrag in EUR;Kategorie;Notiz;Dateiname"
-            let zeile   = "\(beleg.ordnungsNr);\(datumAnzeige(beleg.datum));\(beleg.belegtyp);\(beleg.beschreibung);\(betragFormatiert);\(beleg.kategorie);\(beleg.notiz);\(datname)"
+            let header  = "Nr;Datum;Belegtyp;Beschreibung;Aussteller;Betrag in EUR;Kategorie;Notiz;Dateiname"
+            let zeile   = "\(beleg.ordnungsNr);\(datumAnzeige(beleg.datum));\(beleg.belegtyp);\(beleg.beschreibung);\(beleg.aussteller);\(betragFormatiert);\(beleg.kategorie);\(beleg.notiz);\(datname)"
             csvZeileSchreiben(pfad: csvPfad, header: header, zeile: zeile)
         }
     }

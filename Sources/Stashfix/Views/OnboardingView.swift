@@ -174,6 +174,7 @@ struct OnboardingView: View {
         appState.konfig.archivPfad         = ausgewaehlterPfad
         appState.konfig.exifMetadatenAktiv = exifAktiv
         appState.konfig.macOSTagsAktiv     = macOSTagsAktiv
+        appState.konfig.promptVersion      = Konfiguration.aktuellePromptVersion
 
         // Jetzt erst _Inbox anlegen – Jahresordner werden automatisch
         // beim ersten verarbeiteten Beleg angelegt

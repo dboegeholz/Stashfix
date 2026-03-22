@@ -162,7 +162,8 @@ struct ArchivTab: View {
 // ------------------------------------------------------------
 struct OllamaTab: View {
     @Environment(AppState.self) var appState
-    @State private var zeigePromptReset = false
+    @State private var zeigePromptReset    = false
+    @State private var zeigePromptVergleich = false
 
     var body: some View {
         @Bindable var appState = appState
@@ -201,11 +202,53 @@ struct OllamaTab: View {
                     .font(.headline)
             }
 
+            // Hinweis wenn ein Prompt-Backup vorhanden ist
+            if appState.konfig.ollamaPromptBackup != nil {
+                Section {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "info.circle.fill")
+                                .foregroundColor(.orange)
+                            Text("Der Analyse-Prompt wurde automatisch aktualisiert. Dein alter Prompt ist gesichert.")
+                                .font(.callout)
+                                .foregroundColor(.primary)
+                        }
+                        HStack(spacing: 10) {
+                            Button("Vergleichen") {
+                                zeigePromptVergleich = true
+                            }
+                            .buttonStyle(.bordered)
+                            .font(.caption)
+
+                            Button("Alten Prompt wiederherstellen") {
+                                if let backup = appState.konfig.ollamaPromptBackup {
+                                    appState.konfig.ollamaPrompt           = backup
+                                    appState.konfig.ollamaPromptBackup     = nil
+                                    appState.konfig.promptManuellBearbeitet = true
+                                    appState.konfigurationSpeichern()
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                            .font(.caption)
+
+                            Button("Backup verwerfen") {
+                                appState.konfig.ollamaPromptBackup = nil
+                                appState.konfigurationSpeichern()
+                            }
+                            .buttonStyle(.borderless)
+                            .foregroundColor(.secondary)
+                            .font(.caption)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
+
             Section {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("Platzhalter: {{personen}}, {{kategorien}}, {{jahr}}, {{text}}")
+                            Text("Platzhalter: {{personen}}, {{person_regel}}, {{kategorien}}, {{jahr}}, {{text}}")
                                 .font(.caption2)
                                 .foregroundColor(.secondary)
                         }
@@ -224,6 +267,7 @@ struct OllamaTab: View {
                         .background(Color(NSColor.controlBackgroundColor))
                         .cornerRadius(6)
                         .onChange(of: appState.konfig.ollamaPrompt) {
+                            appState.konfig.promptManuellBearbeitet = true
                             appState.konfigurationSpeichern()
                         }
                 }
@@ -234,7 +278,6 @@ struct OllamaTab: View {
         }
         .formStyle(.grouped)
         .task {
-            // Ollama kurz starten um Modelle zu laden, dann wieder beenden
             await appState.ollamaFuerModelllisteStarten()
             await appState.ollamaModelleAktualisieren()
         }
@@ -243,12 +286,106 @@ struct OllamaTab: View {
         .alert("Prompt zurücksetzen?", isPresented: $zeigePromptReset) {
             Button("Abbrechen", role: .cancel) {}
             Button("Zurücksetzen", role: .destructive) {
-                appState.konfig.ollamaPrompt = Konfiguration.standardPrompt
+                appState.konfig.ollamaPrompt           = Konfiguration.standardPrompt
+                appState.konfig.promptManuellBearbeitet = false
                 appState.konfigurationSpeichern()
             }
         } message: {
             Text("Der Prompt wird auf den Standardwert zurückgesetzt.")
         }
+        .sheet(isPresented: $zeigePromptVergleich) {
+            PromptVergleichView(
+                neuerPrompt:  appState.konfig.ollamaPrompt,
+                alterPrompt:  appState.konfig.ollamaPromptBackup ?? "",
+                onWiederherstellen: {
+                    if let backup = appState.konfig.ollamaPromptBackup {
+                        appState.konfig.ollamaPrompt            = backup
+                        appState.konfig.ollamaPromptBackup      = nil
+                        appState.konfig.promptManuellBearbeitet = true
+                        appState.konfigurationSpeichern()
+                    }
+                    zeigePromptVergleich = false
+                },
+                onSchliessen: { zeigePromptVergleich = false }
+            )
+        }
+    }
+}
+
+// ------------------------------------------------------------
+// Prompt-Vergleich Sheet
+// ------------------------------------------------------------
+struct PromptVergleichView: View {
+    let neuerPrompt:      String
+    let alterPrompt:      String
+    let onWiederherstellen: () -> Void
+    let onSchliessen:       () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("Prompt-Vergleich")
+                    .font(.headline)
+                Spacer()
+                Button("Schließen") { onSchliessen() }
+                    .buttonStyle(.borderless)
+            }
+            .padding()
+
+            Divider()
+
+            HStack(alignment: .top, spacing: 1) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Neuer Prompt (aktiv)")
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal, 12)
+                        .padding(.top, 12)
+                    ScrollView {
+                        Text(neuerPrompt)
+                            .font(.system(.caption, design: .monospaced))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(12)
+                    }
+                    .background(Color(NSColor.controlBackgroundColor))
+                }
+
+                Divider()
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Dein alter Prompt (Backup)")
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal, 12)
+                        .padding(.top, 12)
+                    ScrollView {
+                        Text(alterPrompt)
+                            .font(.system(.caption, design: .monospaced))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(12)
+                    }
+                    .background(Color(NSColor.controlBackgroundColor))
+                }
+            }
+
+            Divider()
+
+            HStack {
+                Spacer()
+                Button("Alten Prompt wiederherstellen") {
+                    onWiederherstellen()
+                }
+                .buttonStyle(.bordered)
+                Button("Neuen Prompt behalten") {
+                    onSchliessen()
+                }
+                .buttonStyle(.borderedProminent)
+            }
+            .padding()
+        }
+        .frame(minWidth: 800, minHeight: 500)
     }
 }
 
